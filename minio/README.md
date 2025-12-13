@@ -49,10 +49,11 @@ chmod +x minio_user_bucket_manager.sh
 3. **Bucket Access Control**
    - Select specific buckets to grant access
    - Choose access level:
-     - **Read-only**: GetObject, ListBucket
-     - **Read-write**: GetObject, PutObject, ListBucket
+     - **Read-only**: GetObject, ListBucket, GetBucketLocation
+     - **Read-write**: GetObject, PutObject, DeleteObject, ListBucket, GetBucketLocation + Multipart uploads
      - **Full access**: All S3 operations
    - Automatically creates IAM-style policies
+   - Compatible with MinIO SDKs (Go, Python, JS, etc.)
 
 4. **Quick Setup Wizard**
    - Create a user and assign bucket access in one flow
@@ -100,7 +101,16 @@ The script creates IAM-compatible policies like:
     "Statement": [
         {
             "Effect": "Allow",
-            "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+            "Action": [
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject",
+                "s3:ListBucket",
+                "s3:GetBucketLocation",
+                "s3:ListBucketMultipartUploads",
+                "s3:ListMultipartUploadParts",
+                "s3:AbortMultipartUpload"
+            ],
             "Resource": [
                 "arn:aws:s3:::bucket-name",
                 "arn:aws:s3:::bucket-name/*"

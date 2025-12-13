@@ -959,10 +959,12 @@ assign_bucket_access() {
 
     case $access_type in
         1)
-            actions='"s3:GetObject", "s3:ListBucket"'
+            # Read-only: get objects, list bucket, check bucket location
+            actions='"s3:GetObject", "s3:ListBucket", "s3:GetBucketLocation"'
             ;;
         2)
-            actions='"s3:GetObject", "s3:PutObject", "s3:ListBucket"'
+            # Read-write: full CRUD operations + multipart uploads (for large files)
+            actions='"s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads", "s3:ListMultipartUploadParts", "s3:AbortMultipartUpload"'
             ;;
         3)
             actions='"s3:*"'

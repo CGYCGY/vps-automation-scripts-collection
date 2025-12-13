@@ -24,6 +24,7 @@ sudo ./setup.sh --tailscale  # Tailscale SSH setup only
 sudo ./setup.sh --coolify    # Coolify installation only
 sudo ./setup.sh --swap       # Swap configuration only
 sudo ./setup.sh --minio      # MinIO migration tool
+./setup.sh --minio-users     # MinIO user & bucket manager
 sudo ./setup.sh --help       # Show all options
 ```
 
@@ -34,6 +35,7 @@ sudo ./setup.sh --help       # Show all options
 | **Tailscale SSH** | Secure VPS with Tailscale SSH - no more SSH keys | [tailscale/README.md](tailscale/README.md) |
 | **Coolify Setup** | Self-hostable Heroku/Netlify alternative | [coolify/README.md](coolify/README.md) |
 | **MinIO Migration** | Migrate MinIO data between servers | [minio/README.md](minio/README.md) |
+| **MinIO User Manager** | Create users with bucket-specific access | [minio/README.md](minio/README.md) |
 | **Swap Config** | RAM-based optimized swap settings | [swap/README.md](swap/README.md) |
 
 ## Supported Systems
@@ -71,8 +73,9 @@ Interactive tool for migrating MinIO between servers.
 │   ├── coolify-setup.sh  # Coolify installation script
 │   └── README.md         # Coolify documentation
 ├── minio/
-│   ├── minio_migration.sh # MinIO migration tool
-│   └── README.md          # MinIO documentation
+│   ├── minio_migration.sh          # MinIO migration tool
+│   ├── minio_user_bucket_manager.sh # MinIO user & bucket manager
+│   └── README.md                    # MinIO documentation
 ├── swap/
 │   ├── swap-configuration-module.sh # Swap setup script
 │   └── README.md                    # Swap documentation

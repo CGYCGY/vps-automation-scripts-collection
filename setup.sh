@@ -46,10 +46,13 @@ print_menu() {
     echo -e "  ${GREEN}4)${NC} MinIO Migration Tool"
     echo -e "     ${YELLOW}Migrate MinIO data between servers with zero downtime${NC}"
     echo ""
-    echo -e "  ${GREEN}5)${NC} Swap Configuration"
+    echo -e "  ${GREEN}5)${NC} MinIO User & Bucket Manager"
+    echo -e "     ${YELLOW}Create users with bucket-specific access permissions${NC}"
+    echo ""
+    echo -e "  ${GREEN}6)${NC} Swap Configuration"
     echo -e "     ${YELLOW}Configure RAM-based optimized swap settings${NC}"
     echo ""
-    echo -e "  ${GREEN}6)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
+    echo -e "  ${GREEN}7)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
     echo -e "     ${YELLOW}Complete new server setup with all essentials${NC}"
     echo ""
     echo -e "  ${GREEN}q)${NC} Quit"
@@ -165,6 +168,21 @@ run_minio_migration() {
     run_script "$SCRIPT_DIR/minio/minio_migration.sh" "MinIO Migration"
 }
 
+run_minio_user_manager() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  MinIO User & Bucket Manager${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}This script will:${NC}"
+    echo "  - Install MinIO Client (mc) if needed"
+    echo "  - Manage MinIO aliases (connections)"
+    echo "  - Create/delete users"
+    echo "  - Assign bucket-specific access permissions"
+    echo ""
+
+    run_script "$SCRIPT_DIR/minio/minio_user_bucket_manager.sh" "MinIO User Manager"
+}
+
 run_swap_config() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  Swap Configuration${NC}"
@@ -251,6 +269,7 @@ show_help() {
     echo "  --tailscale-oracle  Run Tailscale SSH setup for Oracle Cloud"
     echo "  --coolify           Run Coolify setup"
     echo "  --minio             Run MinIO migration tool"
+    echo "  --minio-users       Run MinIO user & bucket manager"
     echo "  --swap              Run swap configuration"
     echo "  --full              Run full server setup (swap + tailscale + coolify)"
     echo "  --help, -h          Show this help message"
@@ -261,6 +280,7 @@ show_help() {
     echo "  sudo $0              # Interactive menu"
     echo "  sudo $0 --full       # Full server setup"
     echo "  sudo $0 --coolify    # Coolify only"
+    echo "  $0 --minio-users     # MinIO user management"
     echo ""
 }
 
@@ -301,6 +321,10 @@ main() {
             run_minio_migration
             exit 0
             ;;
+        --minio-users)
+            run_minio_user_manager
+            exit 0
+            ;;
         --swap)
             check_root
             run_swap_config
@@ -322,7 +346,7 @@ main() {
 
     while true; do
         print_menu
-        read -p "Select an option [1-6, q]: " choice
+        read -p "Select an option [1-7, q]: " choice
         echo ""
 
         case $choice in
@@ -342,10 +366,13 @@ main() {
                 run_minio_migration
                 ;;
             5)
+                run_minio_user_manager
+                ;;
+            6)
                 check_root
                 run_swap_config
                 ;;
-            6)
+            7)
                 check_root
                 run_full_setup
                 ;;

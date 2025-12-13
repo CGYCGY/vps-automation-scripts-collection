@@ -1,3 +1,134 @@
+# MinIO Tools
+
+Tools for managing MinIO object storage - user management, bucket access control, and data migration.
+
+## Available Scripts
+
+| Script | Description |
+|--------|-------------|
+| `minio_user_bucket_manager.sh` | Manage users with bucket-specific access |
+| `minio_migration.sh` | Migrate data between MinIO servers |
+
+---
+
+# MinIO User & Bucket Manager
+
+Interactive tool for managing MinIO users with bucket-specific access permissions. Perfect for creating restricted users who can only access selected buckets.
+
+## Quick Start
+
+```bash
+chmod +x minio_user_bucket_manager.sh
+./minio_user_bucket_manager.sh
+```
+
+## Features
+
+- **Auto-installs MinIO Client (mc)** with architecture detection (amd64/arm64)
+- **Alias Management**: List, create, switch, and remove MinIO connections
+- **User Management**: Create, delete, enable/disable users
+- **Bucket Access Control**: Assign read-only, read-write, or full access to specific buckets
+- **Policy Management**: Automatically creates custom policies per user
+- **Test User Access**: Verify user credentials and permissions
+- **Interactive Interface**: Color-coded menus with clear prompts
+
+## What This Script Does
+
+1. **Alias Management**
+   - List existing MinIO aliases
+   - Create new alias (remote URL, localhost, or auto-detect Docker)
+   - Switch between different MinIO servers
+   - Remove aliases
+
+2. **User Management**
+   - View all users and their status
+   - Create new users with secure passwords
+   - Enable/disable users
+   - Delete users (with cleanup of associated policies)
+
+3. **Bucket Access Control**
+   - Select specific buckets to grant access
+   - Choose access level:
+     - **Read-only**: GetObject, ListBucket
+     - **Read-write**: GetObject, PutObject, ListBucket
+     - **Full access**: All S3 operations
+   - Automatically creates IAM-style policies
+
+4. **Quick Setup Wizard**
+   - Create a user and assign bucket access in one flow
+
+## Use Cases
+
+- **Multi-tenant setup**: Give each customer access to their own bucket
+- **Application credentials**: Create service accounts with minimal permissions
+- **Team access**: Different access levels for different teams
+- **Backup access**: Read-only users for backup systems
+- **Third-party integrations**: Limited access for external services
+
+## Requirements
+
+- Linux server with bash
+- MinIO server with admin access (access key & secret key)
+- Network connectivity to MinIO server
+
+## Example Workflow
+
+### Create a user with access to a specific bucket
+
+1. Run `./minio_user_bucket_manager.sh`
+2. Select or create an alias pointing to your MinIO server
+3. Choose **Quick Setup** or navigate to User Management
+4. Create user (e.g., `app-backend`)
+5. Select bucket(s) to grant access (e.g., `uploads`)
+6. Choose access level (e.g., read-write)
+7. Done! The user can now access only the `uploads` bucket
+
+### Test user credentials
+
+1. Navigate to User Management > Test User Access
+2. Select the user
+3. Enter their password
+4. Script shows what buckets they can access
+
+## Policy Details
+
+The script creates IAM-compatible policies like:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": ["s3:GetObject", "s3:PutObject", "s3:ListBucket"],
+            "Resource": [
+                "arn:aws:s3:::bucket-name",
+                "arn:aws:s3:::bucket-name/*"
+            ]
+        }
+    ]
+}
+```
+
+Policies are named `user-<username>-policy` and automatically attached to users.
+
+## Troubleshooting
+
+### "Admin access test failed"
+- Ensure you're using admin credentials (not a restricted user)
+- Check if the MinIO server allows admin API access
+
+### User created but can't access bucket
+- Verify the policy was attached: `mc admin policy entities ALIAS --user USERNAME`
+- Check bucket name spelling in policy
+
+### Connection timeout
+- Verify MinIO URL is accessible
+- Check firewall rules
+- For Docker, try internal IP instead of localhost
+
+---
+
 # MinIO Migration Tool
 
 Interactive tool for migrating MinIO object storage data between servers with zero downtime.

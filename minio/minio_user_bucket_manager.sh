@@ -433,6 +433,340 @@ view_buckets() {
     press_enter
 }
 
+view_bucket_contents() {
+    print_header
+    echo -e "${BLUE}=== View Bucket Contents ===${NC}"
+    echo ""
+
+    local buckets=($(list_buckets "$CURRENT_ALIAS"))
+
+    if [ ${#buckets[@]} -eq 0 ]; then
+        print_warning "No buckets found"
+        press_enter
+        return
+    fi
+
+    echo "Select bucket to view:"
+    echo ""
+    local i=1
+    for bucket in "${buckets[@]}"; do
+        echo "  $i) $bucket"
+        ((i++))
+    done
+    echo ""
+
+    read -p "Selection [1-$((i-1))]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#buckets[@]} ]; then
+        local selected_bucket="${buckets[$((choice-1))]}"
+
+        print_header
+        echo -e "${BLUE}=== Contents of: $selected_bucket ===${NC}"
+        echo ""
+
+        # Show bucket info
+        local size=$(mc du "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null)
+        local file_count=$(mc ls "$CURRENT_ALIAS/$selected_bucket" --recursive 2>/dev/null | wc -l)
+
+        echo -e "${CYAN}Bucket Info:${NC}"
+        echo "  Total size: $size"
+        echo "  File count: $file_count"
+        echo ""
+
+        echo -e "${CYAN}Contents (first 20 items):${NC}"
+        echo "----------------------------------------"
+        mc ls "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null | head -20
+
+        local total_items=$(mc ls "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null | wc -l)
+        if [ "$total_items" -gt 20 ]; then
+            echo ""
+            print_info "... and $((total_items - 20)) more items"
+        fi
+    else
+        print_error "Invalid selection"
+    fi
+
+    press_enter
+}
+
+delete_bucket() {
+    print_header
+    echo -e "${BLUE}=== Delete Bucket ===${NC}"
+    echo ""
+
+    local buckets=($(list_buckets "$CURRENT_ALIAS"))
+
+    if [ ${#buckets[@]} -eq 0 ]; then
+        print_warning "No buckets found"
+        press_enter
+        return
+    fi
+
+    echo "Select bucket to delete:"
+    echo ""
+    local i=1
+    for bucket in "${buckets[@]}"; do
+        local size=$(mc du "$CURRENT_ALIAS/$bucket" --json 2>/dev/null | grep -o '"size":[0-9]*' | cut -d: -f2)
+        local size_human=$(numfmt --to=iec-i --suffix=B ${size:-0} 2>/dev/null || echo "${size:-0} bytes")
+        echo "  $i) $bucket ($size_human)"
+        ((i++))
+    done
+    echo ""
+
+    read -p "Selection [1-$((i-1))]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#buckets[@]} ]; then
+        local selected_bucket="${buckets[$((choice-1))]}"
+
+        # Check if bucket is empty
+        local file_count=$(mc ls "$CURRENT_ALIAS/$selected_bucket" --recursive 2>/dev/null | wc -l)
+
+        echo ""
+        if [ "$file_count" -gt 0 ]; then
+            print_warning "Bucket '$selected_bucket' contains $file_count file(s)!"
+            echo ""
+            echo "Options:"
+            echo "  1) Delete bucket and all contents (DANGEROUS)"
+            echo "  2) Cancel"
+            echo ""
+            read -p "Selection [1-2]: " delete_choice
+
+            case $delete_choice in
+                1)
+                    print_warning "This will permanently delete ALL data in '$selected_bucket'!"
+                    read -p "Type the bucket name to confirm: " confirm
+
+                    if [ "$confirm" == "$selected_bucket" ]; then
+                        print_info "Removing all objects..."
+                        mc rm "$CURRENT_ALIAS/$selected_bucket" --recursive --force 2>/dev/null
+
+                        print_info "Removing bucket..."
+                        if mc rb "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null; then
+                            print_success "Bucket '$selected_bucket' deleted successfully!"
+                        else
+                            print_error "Failed to delete bucket"
+                        fi
+                    else
+                        print_warning "Deletion cancelled - name did not match"
+                    fi
+                    ;;
+                *)
+                    print_info "Deletion cancelled"
+                    ;;
+            esac
+        else
+            print_warning "Are you sure you want to delete empty bucket '$selected_bucket'?"
+            read -p "Type 'yes' to confirm: " confirm
+
+            if [ "$confirm" == "yes" ]; then
+                if mc rb "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null; then
+                    print_success "Bucket '$selected_bucket' deleted successfully!"
+                else
+                    print_error "Failed to delete bucket"
+                fi
+            else
+                print_info "Deletion cancelled"
+            fi
+        fi
+    else
+        print_error "Invalid selection"
+    fi
+
+    press_enter
+}
+
+empty_bucket() {
+    print_header
+    echo -e "${BLUE}=== Empty Bucket (Delete All Objects) ===${NC}"
+    echo ""
+
+    local buckets=($(list_buckets "$CURRENT_ALIAS"))
+
+    if [ ${#buckets[@]} -eq 0 ]; then
+        print_warning "No buckets found"
+        press_enter
+        return
+    fi
+
+    echo "Select bucket to empty:"
+    echo ""
+    local i=1
+    for bucket in "${buckets[@]}"; do
+        local file_count=$(mc ls "$CURRENT_ALIAS/$bucket" --recursive 2>/dev/null | wc -l)
+        echo "  $i) $bucket ($file_count files)"
+        ((i++))
+    done
+    echo ""
+
+    read -p "Selection [1-$((i-1))]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#buckets[@]} ]; then
+        local selected_bucket="${buckets[$((choice-1))]}"
+        local file_count=$(mc ls "$CURRENT_ALIAS/$selected_bucket" --recursive 2>/dev/null | wc -l)
+
+        if [ "$file_count" -eq 0 ]; then
+            print_info "Bucket '$selected_bucket' is already empty"
+            press_enter
+            return
+        fi
+
+        echo ""
+        print_warning "This will delete ALL $file_count file(s) in '$selected_bucket'!"
+        print_warning "The bucket itself will remain."
+        echo ""
+        read -p "Type the bucket name to confirm: " confirm
+
+        if [ "$confirm" == "$selected_bucket" ]; then
+            print_info "Removing all objects from '$selected_bucket'..."
+            if mc rm "$CURRENT_ALIAS/$selected_bucket" --recursive --force 2>/dev/null; then
+                print_success "All objects deleted from '$selected_bucket'!"
+            else
+                print_error "Failed to empty bucket"
+            fi
+        else
+            print_warning "Operation cancelled - name did not match"
+        fi
+    else
+        print_error "Invalid selection"
+    fi
+
+    press_enter
+}
+
+set_bucket_policy() {
+    print_header
+    echo -e "${BLUE}=== Set Bucket Access Policy ===${NC}"
+    echo ""
+
+    local buckets=($(list_buckets "$CURRENT_ALIAS"))
+
+    if [ ${#buckets[@]} -eq 0 ]; then
+        print_warning "No buckets found"
+        press_enter
+        return
+    fi
+
+    echo "Select bucket:"
+    echo ""
+    local i=1
+    for bucket in "${buckets[@]}"; do
+        # Get current policy
+        local current_policy=$(mc anonymous get "$CURRENT_ALIAS/$bucket" 2>/dev/null | grep -oE "(none|download|upload|public)" || echo "none")
+        echo "  $i) $bucket [current: $current_policy]"
+        ((i++))
+    done
+    echo ""
+
+    read -p "Selection [1-$((i-1))]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#buckets[@]} ]; then
+        local selected_bucket="${buckets[$((choice-1))]}"
+
+        echo ""
+        echo -e "${CYAN}Select access policy for '$selected_bucket':${NC}"
+        echo ""
+        echo "  1) none     - No anonymous access (private, default)"
+        echo "  2) download - Anonymous download allowed (public read)"
+        echo "  3) upload   - Anonymous upload allowed"
+        echo "  4) public   - Anonymous read/write allowed (DANGEROUS)"
+        echo ""
+        read -p "Selection [1-4]: " policy_choice
+
+        local policy=""
+        case $policy_choice in
+            1) policy="none" ;;
+            2) policy="download" ;;
+            3) policy="upload" ;;
+            4) policy="public" ;;
+            *)
+                print_error "Invalid selection"
+                press_enter
+                return
+                ;;
+        esac
+
+        if [ "$policy" == "public" ]; then
+            print_warning "Setting public access allows ANYONE to read AND write to this bucket!"
+            read -p "Are you sure? (type 'yes' to confirm): " confirm
+            if [ "$confirm" != "yes" ]; then
+                print_info "Operation cancelled"
+                press_enter
+                return
+            fi
+        fi
+
+        print_info "Setting policy '$policy' on '$selected_bucket'..."
+
+        if mc anonymous set "$policy" "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null; then
+            print_success "Policy set successfully!"
+            echo ""
+            echo "Current policy:"
+            mc anonymous get "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null
+        else
+            print_error "Failed to set policy"
+        fi
+    else
+        print_error "Invalid selection"
+    fi
+
+    press_enter
+}
+
+get_bucket_info() {
+    print_header
+    echo -e "${BLUE}=== Bucket Information ===${NC}"
+    echo ""
+
+    local buckets=($(list_buckets "$CURRENT_ALIAS"))
+
+    if [ ${#buckets[@]} -eq 0 ]; then
+        print_warning "No buckets found"
+        press_enter
+        return
+    fi
+
+    echo "Select bucket:"
+    echo ""
+    local i=1
+    for bucket in "${buckets[@]}"; do
+        echo "  $i) $bucket"
+        ((i++))
+    done
+    echo ""
+
+    read -p "Selection [1-$((i-1))]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#buckets[@]} ]; then
+        local selected_bucket="${buckets[$((choice-1))]}"
+
+        print_header
+        echo -e "${CYAN}=== Bucket: $selected_bucket ===${NC}"
+        echo ""
+
+        echo -e "${BLUE}Size & Files:${NC}"
+        echo "----------------------------------------"
+        mc du "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null
+        local file_count=$(mc ls "$CURRENT_ALIAS/$selected_bucket" --recursive 2>/dev/null | wc -l)
+        echo "Total files: $file_count"
+        echo ""
+
+        echo -e "${BLUE}Anonymous Access Policy:${NC}"
+        echo "----------------------------------------"
+        mc anonymous get "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null || echo "Unable to get policy"
+        echo ""
+
+        echo -e "${BLUE}Bucket Versioning:${NC}"
+        echo "----------------------------------------"
+        mc version info "$CURRENT_ALIAS/$selected_bucket" 2>/dev/null || echo "Versioning not available"
+        echo ""
+
+    else
+        print_error "Invalid selection"
+    fi
+
+    press_enter
+}
+
 #===============================================================================
 # User Management Functions
 #===============================================================================
@@ -981,7 +1315,12 @@ bucket_menu() {
         echo -e "${BLUE}=== Bucket Management ===${NC}"
         echo ""
         echo "  1) View all buckets"
-        echo "  2) Create new bucket"
+        echo "  2) View bucket contents"
+        echo "  3) Bucket info (size, policy, versioning)"
+        echo "  4) Create new bucket"
+        echo "  5) Delete bucket"
+        echo "  6) Empty bucket (delete all objects)"
+        echo "  7) Set bucket access policy"
         echo ""
         echo "  b) Back to main menu"
         echo ""
@@ -989,7 +1328,12 @@ bucket_menu() {
 
         case $choice in
             1) view_buckets ;;
-            2) create_bucket ;;
+            2) view_bucket_contents ;;
+            3) get_bucket_info ;;
+            4) create_bucket ;;
+            5) delete_bucket ;;
+            6) empty_bucket ;;
+            7) set_bucket_policy ;;
             b|B) return ;;
             *) print_error "Invalid choice"; sleep 1 ;;
         esac

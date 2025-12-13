@@ -26,7 +26,7 @@ CURRENT_ALIAS=""
 print_header() {
     clear
     echo -e "${CYAN}╔══════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${CYAN}║         MinIO User & Bucket Manager v${VERSION}                      ║${NC}"
+    echo -e "${CYAN}║         MinIO User & Bucket Manager v${VERSION}                       ║${NC}"
     echo -e "${CYAN}║         Manage users with bucket-specific access                 ║${NC}"
     echo -e "${CYAN}╚══════════════════════════════════════════════════════════════════╝${NC}"
     echo ""

@@ -43,16 +43,19 @@ print_menu() {
     echo -e "  ${GREEN}3)${NC} Coolify Setup"
     echo -e "     ${YELLOW}Install Coolify - self-hostable Heroku/Netlify alternative${NC}"
     echo ""
-    echo -e "  ${GREEN}4)${NC} MinIO Migration Tool"
+    echo -e "  ${GREEN}4)${NC} Coolify Remote Server Setup"
+    echo -e "     ${YELLOW}Prepare server to be managed by existing Coolify dashboard${NC}"
+    echo ""
+    echo -e "  ${GREEN}5)${NC} MinIO Migration Tool"
     echo -e "     ${YELLOW}Migrate MinIO data between servers with zero downtime${NC}"
     echo ""
-    echo -e "  ${GREEN}5)${NC} MinIO User & Bucket Manager"
+    echo -e "  ${GREEN}6)${NC} MinIO User & Bucket Manager"
     echo -e "     ${YELLOW}Create users with bucket-specific access permissions${NC}"
     echo ""
-    echo -e "  ${GREEN}6)${NC} Swap Configuration"
+    echo -e "  ${GREEN}7)${NC} Swap Configuration"
     echo -e "     ${YELLOW}Configure RAM-based optimized swap settings${NC}"
     echo ""
-    echo -e "  ${GREEN}7)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
+    echo -e "  ${GREEN}8)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
     echo -e "     ${YELLOW}Complete new server setup with all essentials${NC}"
     echo ""
     echo -e "  ${GREEN}q)${NC} Quit"
@@ -148,6 +151,30 @@ run_coolify() {
 
     if confirm_action "This will install Coolify on your server."; then
         run_script "$SCRIPT_DIR/coolify/coolify-setup.sh" "Coolify Setup"
+    else
+        echo -e "${YELLOW}Skipped.${NC}"
+    fi
+}
+
+run_coolify_remote() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  Coolify Remote Server Setup${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}This script will:${NC}"
+    echo "  - Create coolify user with passwordless sudo"
+    echo "  - Install Docker (if needed)"
+    echo "  - Setup SSH key for Coolify access"
+    echo "  - Check and configure firewall (if needed)"
+    echo "  - Verify setup and show next steps"
+    echo ""
+    echo -e "${CYAN}Prerequisites:${NC}"
+    echo "  - You have a Coolify dashboard already installed"
+    echo "  - You have the SSH public key from Coolify UI"
+    echo ""
+
+    if confirm_action "This will prepare the server for Coolify management."; then
+        run_script "$SCRIPT_DIR/coolify/coolify-remote-setup.sh" "Coolify Remote Setup"
     else
         echo -e "${YELLOW}Skipped.${NC}"
     fi
@@ -268,6 +295,7 @@ show_help() {
     echo "  --tailscale-generic Run Tailscale SSH setup for generic VPS"
     echo "  --tailscale-oracle  Run Tailscale SSH setup for Oracle Cloud"
     echo "  --coolify           Run Coolify setup"
+    echo "  --coolify-remote    Run Coolify remote server setup"
     echo "  --minio             Run MinIO migration tool"
     echo "  --minio-users       Run MinIO user & bucket manager"
     echo "  --swap              Run swap configuration"
@@ -277,10 +305,11 @@ show_help() {
     echo "Without arguments, an interactive menu will be displayed."
     echo ""
     echo "Examples:"
-    echo "  sudo $0              # Interactive menu"
-    echo "  sudo $0 --full       # Full server setup"
-    echo "  sudo $0 --coolify    # Coolify only"
-    echo "  $0 --minio-users     # MinIO user management"
+    echo "  sudo $0                  # Interactive menu"
+    echo "  sudo $0 --full           # Full server setup"
+    echo "  sudo $0 --coolify        # Coolify dashboard install"
+    echo "  sudo $0 --coolify-remote # Coolify remote server setup"
+    echo "  $0 --minio-users         # MinIO user management"
     echo ""
 }
 
@@ -317,6 +346,11 @@ main() {
             run_coolify
             exit 0
             ;;
+        --coolify-remote)
+            check_root
+            run_coolify_remote
+            exit 0
+            ;;
         --minio)
             run_minio_migration
             exit 0
@@ -346,7 +380,7 @@ main() {
 
     while true; do
         print_menu
-        read -p "Select an option [1-7, q]: " choice
+        read -p "Select an option [1-8, q]: " choice
         echo ""
 
         case $choice in
@@ -363,16 +397,20 @@ main() {
                 run_coolify
                 ;;
             4)
-                run_minio_migration
+                check_root
+                run_coolify_remote
                 ;;
             5)
-                run_minio_user_manager
+                run_minio_migration
                 ;;
             6)
+                run_minio_user_manager
+                ;;
+            7)
                 check_root
                 run_swap_config
                 ;;
-            7)
+            8)
                 check_root
                 run_full_setup
                 ;;

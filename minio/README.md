@@ -25,11 +25,13 @@ chmod +x minio_user_bucket_manager.sh
 ## Features
 
 - **Auto-installs MinIO Client (mc)** with architecture detection (amd64/arm64)
-- **Alias Management**: List, create, switch, and remove MinIO connections
+- **Alias Management**: List, create, switch, update URL, and remove MinIO connections
 - **User Management**: Create, delete, enable/disable users
 - **Bucket Access Control**: Assign read-only, read-write, or full access to specific buckets
 - **Policy Management**: Automatically creates custom policies per user
 - **Test User Access**: Verify user credentials and permissions
+- **Connection Diagnostics**: Distinguishes between network and credential issues
+- **Docker Support**: Auto-detects container IPs, works with/without sudo
 - **Interactive Interface**: Color-coded menus with clear prompts
 
 ## What This Script Does
@@ -38,7 +40,9 @@ chmod +x minio_user_bucket_manager.sh
    - List existing MinIO aliases
    - Create new alias (remote URL, localhost, or auto-detect Docker)
    - Switch between different MinIO servers
+   - **Update alias URL** (for Docker IP changes after container restart)
    - Remove aliases
+   - Connection testing with clear error messages (network vs credential issues)
 
 2. **User Management**
    - View all users and their status
@@ -124,18 +128,38 @@ Policies are named `user-<username>-policy` and automatically attached to users.
 
 ## Troubleshooting
 
-### "Admin access test failed"
+### "Cannot reach MinIO server" (Network Issue)
+The script now distinguishes between network and credential issues. If you see this error:
+- The MinIO server is not running
+- The IP address or port is incorrect
+- Firewall is blocking the connection
+
+**For Docker containers**, the IP may have changed after restart. The script will show:
+```bash
+# Check container IP (script auto-detects if sudo is needed)
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_name>
+
+# Or with sudo if required
+sudo docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_name>
+```
+
+**Quick fix**: Use Alias Management > Update alias URL > Auto-detect Docker container IP
+
+### "Failed to connect. Please check your credentials"
+This appears when the server is reachable but authentication failed:
 - Ensure you're using admin credentials (not a restricted user)
 - Check if the MinIO server allows admin API access
+- Verify access key and secret key are correct
 
 ### User created but can't access bucket
 - Verify the policy was attached: `mc admin policy entities ALIAS --user USERNAME`
 - Check bucket name spelling in policy
 
-### Connection timeout
-- Verify MinIO URL is accessible
-- Check firewall rules
-- For Docker, try internal IP instead of localhost
+### Docker container IP changed
+After restarting a Docker container, the IP address often changes. Use:
+1. **Alias Management > Update alias URL** (recommended)
+2. **Auto-detect Docker container IP** option to automatically find the new IP
+3. The script works with both `docker` and `sudo docker` automatically
 
 ---
 

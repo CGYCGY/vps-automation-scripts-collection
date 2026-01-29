@@ -140,6 +140,50 @@ install_mc() {
 # Alias Management Functions
 #===============================================================================
 
+# Detect if docker needs sudo
+get_docker_cmd() {
+    if docker ps &>/dev/null 2>&1; then
+        echo "docker"
+    elif sudo docker ps &>/dev/null 2>&1; then
+        echo "sudo docker"
+    else
+        echo ""
+    fi
+}
+
+# Check if a URL is reachable (network connectivity check)
+check_url_reachable() {
+    local url=$1
+    local host=$(echo "$url" | sed -E 's|^https?://||' | cut -d':' -f1 | cut -d'/' -f1)
+    local port=$(echo "$url" | sed -E 's|^https?://[^:]+:?||' | cut -d'/' -f1)
+    port=${port:-9000}
+
+    # Try curl first (with short timeout), fall back to nc
+    if command -v curl &> /dev/null; then
+        if curl -s --connect-timeout 3 --max-time 5 "$url/minio/health/live" &> /dev/null; then
+            return 0
+        fi
+        # Even if health endpoint fails, check if we can reach the host at all
+        if curl -s --connect-timeout 3 --max-time 5 -o /dev/null -w "%{http_code}" "$url" 2>/dev/null | grep -qE "^[0-9]+$"; then
+            return 0
+        fi
+    fi
+
+    # Try netcat as fallback
+    if command -v nc &> /dev/null; then
+        if nc -z -w 3 "$host" "$port" &> /dev/null; then
+            return 0
+        fi
+    fi
+
+    # Try bash /dev/tcp as last resort
+    if timeout 3 bash -c "echo > /dev/tcp/$host/$port" 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
 list_aliases() {
     mc alias list 2>/dev/null | grep -E "^[a-zA-Z]" | awk '{print $1}'
 }
@@ -190,14 +234,43 @@ select_alias() {
     elif [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#aliases[@]} ]; then
         CURRENT_ALIAS="${aliases[$((choice-1))]}"
 
-        # Test connection
+        # Get the URL for this alias
+        local alias_url=$(mc alias list "$CURRENT_ALIAS" 2>/dev/null | grep "URL" | awk '{print $3}')
+
+        # Test connection - first check URL reachability, then credentials
         print_info "Testing connection to $CURRENT_ALIAS..."
-        if mc admin info "$CURRENT_ALIAS" &> /dev/null; then
+        print_info "URL: $alias_url"
+
+        if ! check_url_reachable "$alias_url"; then
+            print_error "Cannot reach MinIO server at: $alias_url"
+            echo ""
+            print_warning "The server URL is not accessible. Possible causes:"
+            echo "  • The MinIO server is not running"
+            echo "  • The IP address or port is incorrect"
+            echo "  • Firewall is blocking the connection"
+            echo ""
+            print_info "If running MinIO in Docker, the container IP may have changed."
+            print_info "Check the current container IP with:"
+            echo ""
+            local docker_cmd=$(get_docker_cmd)
+            if [ -n "$docker_cmd" ]; then
+                echo -e "  ${CYAN}$docker_cmd inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_name>${NC}"
+            else
+                echo -e "  ${CYAN}docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_name>${NC}"
+                echo -e "  ${YELLOW}(or with sudo if needed)${NC}"
+            fi
+            echo ""
+            print_info "To update this alias, use Alias Management > Update alias URL,"
+            print_info "or manually: mc alias set $CURRENT_ALIAS <new_url> <access_key> <secret_key>"
+            CURRENT_ALIAS=""
+            press_enter
+        elif mc admin info "$CURRENT_ALIAS" &> /dev/null; then
             print_success "Connected successfully!"
             sleep 1
         else
             print_error "Failed to connect. Please check your credentials."
             print_warning "Note: You need admin access for user management."
+            print_info "The server is reachable, but authentication failed."
             CURRENT_ALIAS=""
             press_enter
         fi
@@ -240,20 +313,27 @@ create_alias() {
             ;;
         3)
             print_info "Finding MinIO Docker container..."
-            local container=$(docker ps --filter name=minio --format "{{.Names}}" 2>/dev/null | head -1)
-            if [ -n "$container" ]; then
-                local docker_ip=$(docker inspect "$container" 2>/dev/null | grep -m 1 '"IPAddress"' | awk -F'"' '{print $4}')
-                if [ -n "$docker_ip" ]; then
-                    print_success "Found container: $container"
-                    print_success "Docker IP: $docker_ip"
-                    minio_url="http://$docker_ip:9000"
+            local docker_cmd=$(get_docker_cmd)
+            if [ -z "$docker_cmd" ]; then
+                print_error "Docker is not accessible (tried with and without sudo)"
+                print_info "Please ensure Docker is installed and you have permission to use it"
+                read -p "Enter MinIO URL manually: " minio_url
+            else
+                local container=$($docker_cmd ps --filter name=minio --format "{{.Names}}" 2>/dev/null | head -1)
+                if [ -n "$container" ]; then
+                    local docker_ip=$($docker_cmd inspect "$container" 2>/dev/null | grep -m 1 '"IPAddress"' | awk -F'"' '{print $4}')
+                    if [ -n "$docker_ip" ]; then
+                        print_success "Found container: $container"
+                        print_success "Docker IP: $docker_ip"
+                        minio_url="http://$docker_ip:9000"
+                    else
+                        print_error "Could not get container IP"
+                        read -p "Enter MinIO URL manually: " minio_url
+                    fi
                 else
-                    print_error "Could not get container IP"
+                    print_warning "No MinIO container found"
                     read -p "Enter MinIO URL manually: " minio_url
                 fi
-            else
-                print_warning "No MinIO container found"
-                read -p "Enter MinIO URL manually: " minio_url
             fi
             ;;
         *)
@@ -261,6 +341,34 @@ create_alias() {
             return 1
             ;;
     esac
+
+    echo ""
+
+    # Check URL reachability before asking for credentials
+    print_info "Checking if MinIO server is reachable at $minio_url..."
+    if ! check_url_reachable "$minio_url"; then
+        print_error "Cannot reach MinIO server at: $minio_url"
+        echo ""
+        print_warning "The server URL is not accessible. Please verify:"
+        echo "  • The MinIO server is running"
+        echo "  • The IP address and port are correct"
+        echo "  • No firewall is blocking the connection"
+        echo ""
+        local docker_cmd=$(get_docker_cmd)
+        if [ -n "$docker_cmd" ]; then
+            print_info "If running MinIO in Docker, check the container IP with:"
+            echo ""
+            echo -e "  ${CYAN}$docker_cmd inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_name>${NC}"
+            echo ""
+        fi
+        read -p "Continue anyway? (y/n): " continue_anyway
+        if [[ ! $continue_anyway =~ ^[Yy]$ ]]; then
+            press_enter
+            return 1
+        fi
+    else
+        print_success "Server is reachable!"
+    fi
 
     echo ""
     read -p "Enter access key: " access_key
@@ -278,9 +386,145 @@ create_alias() {
         else
             print_warning "Alias created but admin access test failed."
             print_warning "You may not have admin privileges for user management."
+            print_info "The server is reachable, so credentials may be the issue."
         fi
     else
         print_error "Failed to create alias"
+    fi
+
+    press_enter
+}
+
+update_alias_url() {
+    print_header
+    echo -e "${BLUE}=== Update Alias URL ===${NC}"
+    echo ""
+    echo "Use this to update the URL when your MinIO server IP changes"
+    echo "(e.g., Docker container restart)"
+    echo ""
+
+    local aliases=($(list_aliases))
+
+    if [ ${#aliases[@]} -eq 0 ]; then
+        print_warning "No aliases to update."
+        press_enter
+        return
+    fi
+
+    echo "Select alias to update:"
+    echo ""
+    local i=1
+    for alias in "${aliases[@]}"; do
+        local url=$(mc alias list "$alias" 2>/dev/null | grep "URL" | awk '{print $3}')
+        echo -e "  ${GREEN}$i)${NC} $alias"
+        echo -e "     ${YELLOW}Current URL: $url${NC}"
+        echo ""
+        ((i++))
+    done
+    echo ""
+
+    read -p "Selection [1-$((i-1))]: " choice
+
+    if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le ${#aliases[@]} ]; then
+        local selected_alias="${aliases[$((choice-1))]}"
+        local current_url=$(mc alias list "$selected_alias" 2>/dev/null | grep "URL" | awk '{print $3}')
+
+        echo ""
+        echo "Update options for '$selected_alias':"
+        echo "  1) Enter new URL manually"
+        echo "  2) Auto-detect Docker container IP"
+        echo "  3) Cancel"
+        echo ""
+        read -p "Selection [1-3]: " update_choice
+
+        local new_url=""
+        case $update_choice in
+            1)
+                read -p "Enter new MinIO URL: " new_url
+                ;;
+            2)
+                print_info "Finding MinIO Docker container..."
+                local docker_cmd=$(get_docker_cmd)
+                if [ -z "$docker_cmd" ]; then
+                    print_error "Docker is not accessible (tried with and without sudo)"
+                    print_info "Please ensure Docker is installed and you have permission to use it"
+                else
+                    local container=$($docker_cmd ps --filter name=minio --format "{{.Names}}" 2>/dev/null | head -1)
+                    if [ -n "$container" ]; then
+                        local docker_ip=$($docker_cmd inspect "$container" 2>/dev/null | grep -m 1 '"IPAddress"' | awk -F'"' '{print $4}')
+                        if [ -n "$docker_ip" ]; then
+                            # Extract port from current URL
+                            local port=$(echo "$current_url" | sed -E 's|^https?://[^:]+:?||' | cut -d'/' -f1)
+                            port=${port:-9000}
+                            new_url="http://$docker_ip:$port"
+                            print_success "Found container: $container"
+                            print_success "Detected IP: $docker_ip"
+                            echo ""
+                            echo "New URL will be: $new_url"
+                            read -p "Use this URL? (y/n): " confirm_url
+                            if [[ ! $confirm_url =~ ^[Yy]$ ]]; then
+                                new_url=""
+                            fi
+                        else
+                            print_error "Could not get container IP"
+                        fi
+                    else
+                        print_warning "No MinIO container found"
+                        local docker_ps_cmd="$docker_cmd ps"
+                        print_info "Tip: List containers with: $docker_ps_cmd"
+                    fi
+                fi
+                ;;
+            *)
+                print_info "Operation cancelled"
+                press_enter
+                return
+                ;;
+        esac
+
+        if [ -z "$new_url" ]; then
+            print_warning "No URL provided, operation cancelled"
+            press_enter
+            return
+        fi
+
+        # Check if new URL is reachable
+        print_info "Checking if new URL is reachable..."
+        if ! check_url_reachable "$new_url"; then
+            print_warning "Cannot reach MinIO server at: $new_url"
+            read -p "Continue anyway? (y/n): " continue_anyway
+            if [[ ! $continue_anyway =~ ^[Yy]$ ]]; then
+                press_enter
+                return
+            fi
+        else
+            print_success "Server is reachable!"
+        fi
+
+        echo ""
+        print_info "To update the alias, please re-enter credentials:"
+        read -p "Enter access key: " access_key
+        read -sp "Enter secret key: " secret_key
+        echo ""
+        echo ""
+
+        print_info "Updating alias '$selected_alias'..."
+
+        if mc alias set "$selected_alias" "$new_url" "$access_key" "$secret_key" &> /dev/null; then
+            if mc admin info "$selected_alias" &> /dev/null; then
+                print_success "Alias '$selected_alias' updated and connected successfully!"
+                if [ "$CURRENT_ALIAS" == "$selected_alias" ]; then
+                    print_info "Current alias updated."
+                fi
+            else
+                print_warning "Alias updated but admin access test failed."
+                print_warning "Credentials may be incorrect or you may not have admin privileges."
+            fi
+        else
+            print_error "Failed to update alias"
+        fi
+    else
+        print_error "Invalid selection"
     fi
 
     press_enter
@@ -1244,8 +1488,9 @@ alias_menu() {
         echo ""
         echo "  1) Select/Switch alias"
         echo "  2) Create new alias"
-        echo "  3) Remove alias"
-        echo "  4) View all aliases"
+        echo "  3) Update alias URL (for Docker IP changes)"
+        echo "  4) Remove alias"
+        echo "  5) View all aliases"
         echo ""
         echo "  b) Back to main menu"
         echo ""
@@ -1254,8 +1499,9 @@ alias_menu() {
         case $choice in
             1) select_alias ;;
             2) create_alias ;;
-            3) remove_alias ;;
-            4)
+            3) update_alias_url ;;
+            4) remove_alias ;;
+            5)
                 print_header
                 echo -e "${BLUE}=== All Configured Aliases ===${NC}"
                 echo ""

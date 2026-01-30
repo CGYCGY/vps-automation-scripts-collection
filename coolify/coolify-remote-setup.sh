@@ -7,12 +7,16 @@
 # as a managed/remote server.
 #
 # Usage:
-#   ./coolify-remote-setup.sh           # Interactive menu
-#   ./coolify-remote-setup.sh --all     # Full setup (all steps)
-#   ./coolify-remote-setup.sh --user    # Create coolify user only
-#   ./coolify-remote-setup.sh --docker  # Install Docker only
-#   ./coolify-remote-setup.sh --ssh     # Setup SSH key only
-#   ./coolify-remote-setup.sh --help    # Show help
+#   ./coolify-remote-setup.sh              # Interactive menu
+#   ./coolify-remote-setup.sh --all        # Full setup (all steps)
+#   ./coolify-remote-setup.sh --user       # Create coolify user only
+#   ./coolify-remote-setup.sh --docker     # Install Docker only
+#   ./coolify-remote-setup.sh --ssh        # Setup SSH key only
+#   ./coolify-remote-setup.sh --github     # Setup GitHub Container Registry only
+#   ./coolify-remote-setup.sh --cloudflare # Setup Cloudflare Origin Certificate only
+#   ./coolify-remote-setup.sh --firewall   # Check firewall only
+#   ./coolify-remote-setup.sh --verify     # Verify setup only
+#   ./coolify-remote-setup.sh --help       # Show help
 #
 # Requirements:
 #   - Ubuntu/Debian-based system
@@ -206,7 +210,243 @@ setup_ssh_key() {
     print_info "Coolify can now connect to this server via SSH"
 }
 
-# Step 4: Check and configure firewall
+# Step 4: Setup GitHub Container Registry
+setup_github_registry() {
+    print_info "Setting up GitHub Container Registry..."
+
+    print_info "This will configure Docker to authenticate with GitHub Container Registry (ghcr.io)"
+    print_info "You'll need a GitHub Personal Access Token (PAT) with 'read:packages' scope"
+    echo ""
+
+    print_warning "To create a PAT:"
+    print_info "1. Go to GitHub → Settings → Developer settings"
+    print_info "2. Personal access tokens → Tokens (classic)"
+    print_info "3. Generate new token with 'read:packages' scope"
+    echo ""
+
+    if ! confirm "Do you have your GitHub PAT ready?"; then
+        print_warning "Please create a PAT first, then run this option again"
+        return 0
+    fi
+
+    # Get GitHub credentials
+    echo ""
+    read -rp "Enter your GitHub username: " GITHUB_USERNAME
+    if [[ -z "$GITHUB_USERNAME" ]]; then
+        print_error "Username cannot be empty"
+        return 1
+    fi
+
+    echo ""
+    read -rs -p "Enter your GitHub PAT (hidden): " GITHUB_PAT
+    echo ""
+
+    if [[ -z "$GITHUB_PAT" ]]; then
+        print_error "PAT cannot be empty"
+        return 1
+    fi
+
+    print_info "Logging into GitHub Container Registry..."
+
+    # Login to ghcr.io
+    if echo "$GITHUB_PAT" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin; then
+        print_success "Successfully logged into ghcr.io!"
+
+        # Show config location
+        DOCKER_CONFIG="$HOME/.docker/config.json"
+        if [[ -f "$DOCKER_CONFIG" ]]; then
+            print_info "Credentials saved to: $DOCKER_CONFIG"
+        fi
+
+        # Setup for coolify user as well
+        if id "coolify" &>/dev/null; then
+            print_info "Setting up registry for 'coolify' user as well..."
+
+            COOLIFY_DOCKER_DIR="/home/coolify/.docker"
+            mkdir -p "$COOLIFY_DOCKER_DIR"
+
+            # Copy docker config
+            if [[ -f "$HOME/.docker/config.json" ]]; then
+                cp "$HOME/.docker/config.json" "$COOLIFY_DOCKER_DIR/config.json"
+                chown -R coolify:coolify "$COOLIFY_DOCKER_DIR"
+                chmod 600 "$COOLIFY_DOCKER_DIR/config.json"
+                print_success "Registry configured for 'coolify' user"
+            fi
+        fi
+
+        echo ""
+        print_success "GitHub Container Registry setup complete!"
+        print_info "Docker can now pull private images from ghcr.io"
+    else
+        print_error "Failed to login to ghcr.io"
+        print_info "Please check your username and PAT"
+        return 1
+    fi
+}
+
+# Step 5: Setup Cloudflare Origin Certificate
+setup_cloudflare_cert() {
+    print_info "Setting up Cloudflare Origin Certificate..."
+
+    # Check if Docker is installed (needed for Traefik/proxy)
+    if ! command -v docker &>/dev/null; then
+        print_error "Docker is not installed. Please install Docker first (Option 3)"
+        return 1
+    fi
+
+    # Create proxy directories if they don't exist
+    PROXY_DIR="/data/coolify/proxy"
+    if [[ ! -d "$PROXY_DIR" ]]; then
+        print_info "Creating Coolify proxy directory structure..."
+        mkdir -p "$PROXY_DIR/certs"
+        mkdir -p "$PROXY_DIR/dynamic"
+    fi
+
+    print_info "This will configure Cloudflare Origin Certificates for SSL/TLS"
+    echo ""
+
+    # Get domain
+    read -rp "Enter your domain (e.g., example.com): " DOMAIN
+    if [[ -z "$DOMAIN" ]]; then
+        print_error "Domain cannot be empty"
+        return 1
+    fi
+
+    # Create certificates directory
+    CERTS_DIR="$PROXY_DIR/certs"
+    print_info "Creating certificates directory: $CERTS_DIR"
+    mkdir -p "$CERTS_DIR"
+
+    CERT_FILE="$CERTS_DIR/$DOMAIN.cert"
+    KEY_FILE="$CERTS_DIR/$DOMAIN.key"
+
+    echo ""
+    print_warning "Before continuing, create an Origin Certificate in Cloudflare:"
+    print_info "1. Go to Cloudflare Dashboard → Your Domain"
+    print_info "2. Navigate to: SSL/TLS → Origin Server"
+    print_info "3. Click 'Create Certificate'"
+    print_info "4. Configure:"
+    print_info "   • Private key type: RSA (2048)"
+    print_info "   • Hostnames: *.$DOMAIN, $DOMAIN"
+    print_info "   • Validity: 15 years"
+    print_info "5. Click 'Create' and keep the page open"
+    echo ""
+
+    if ! confirm "Have you created the certificate in Cloudflare?"; then
+        print_warning "Please create the certificate first, then run this option again"
+        return 0
+    fi
+
+    # Get certificate
+    echo ""
+    print_info "Paste the Origin Certificate (including BEGIN/END lines)"
+    print_info "Press Ctrl+D when done:"
+    echo ""
+
+    CERT_CONTENT=$(cat)
+
+    if [[ -z "$CERT_CONTENT" ]]; then
+        print_error "Certificate cannot be empty"
+        return 1
+    fi
+
+    echo "$CERT_CONTENT" > "$CERT_FILE"
+    print_success "Certificate saved to: $CERT_FILE"
+
+    # Get private key
+    echo ""
+    print_info "Paste the Private Key (including BEGIN/END lines)"
+    print_info "Press Ctrl+D when done:"
+    echo ""
+
+    KEY_CONTENT=$(cat)
+
+    if [[ -z "$KEY_CONTENT" ]]; then
+        print_error "Private key cannot be empty"
+        return 1
+    fi
+
+    echo "$KEY_CONTENT" > "$KEY_FILE"
+    print_success "Private key saved to: $KEY_FILE"
+
+    # Set permissions
+    print_info "Setting file permissions..."
+    chmod 644 "$CERT_FILE"
+    chmod 600 "$KEY_FILE"
+    print_success "Permissions set!"
+
+    # Verify files
+    print_info "Verifying certificate..."
+    if openssl x509 -in "$CERT_FILE" -text -noout > /dev/null 2>&1; then
+        print_success "Certificate is valid!"
+        echo ""
+        openssl x509 -in "$CERT_FILE" -noout -subject -dates | sed 's/^/    /'
+    else
+        print_error "Certificate appears to be invalid"
+        return 1
+    fi
+
+    echo ""
+    print_info "Verifying private key..."
+    if openssl rsa -in "$KEY_FILE" -check -noout > /dev/null 2>&1; then
+        print_success "Private key is valid!"
+    else
+        print_error "Private key appears to be invalid"
+        return 1
+    fi
+
+    # Create Traefik dynamic configuration
+    echo ""
+    if confirm "Create Traefik dynamic configuration automatically?"; then
+        TRAEFIK_CONFIG="$PROXY_DIR/dynamic/cloudflare-origin-cert.yaml"
+        mkdir -p "$PROXY_DIR/dynamic"
+
+        cat > "$TRAEFIK_CONFIG" << EOF
+tls:
+  certificates:
+    - certFile: /traefik/certs/$DOMAIN.cert
+      keyFile: /traefik/certs/$DOMAIN.key
+EOF
+
+        print_success "Traefik configuration created at: $TRAEFIK_CONFIG"
+    else
+        echo ""
+        print_warning "Add this configuration manually in Coolify UI:"
+        print_info "Servers → Your Server → Proxy → Dynamic Configuration → Add"
+        echo ""
+        echo -e "${GREEN}tls:"
+        echo "  certificates:"
+        echo "    - certFile: /traefik/certs/$DOMAIN.cert"
+        echo -e "      keyFile: /traefik/certs/$DOMAIN.key${NC}"
+        echo ""
+    fi
+
+    # Final instructions
+    echo ""
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}  Cloudflare Settings Required${NC}"
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+
+    print_info "Configure these settings in Cloudflare Dashboard:"
+    print_info "1. SSL/TLS → Overview → Set to: Full (strict)"
+    print_info "2. SSL/TLS → Edge Certificates → Enable: Always Use HTTPS"
+
+    echo ""
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}  Next Steps${NC}"
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+
+    print_info "1. Add this server to Coolify dashboard first"
+    print_info "2. Restart Traefik proxy in Coolify UI:"
+    print_info "   Servers → This Server → Proxy → Restart Proxy"
+    print_info "3. Redeploy your applications"
+    print_info "4. Test with: curl -I https://your-app.$DOMAIN"
+
+    echo ""
+    print_success "Cloudflare Origin Certificate setup complete!"
+}
+
+# Step 6: Check and configure firewall
 check_firewall() {
     print_info "Checking firewall configuration..."
 
@@ -242,7 +482,7 @@ check_firewall() {
     fi
 }
 
-# Step 5: Verify setup
+# Step 7: Verify setup
 verify_setup() {
     print_info "Verifying setup..."
     echo ""
@@ -311,6 +551,20 @@ verify_setup() {
         print_warning "⚠ SSH authorized_keys file NOT found"
     fi
 
+    # Check GitHub Container Registry
+    if [[ -f /home/coolify/.docker/config.json ]] && grep -q "ghcr.io" /home/coolify/.docker/config.json 2>/dev/null; then
+        print_success "✓ GitHub Container Registry configured for coolify user"
+    else
+        print_warning "⚠ GitHub Container Registry NOT configured (optional)"
+    fi
+
+    # Check Cloudflare certificates
+    if [[ -d /data/coolify/proxy/certs ]] && ls /data/coolify/proxy/certs/*.cert &>/dev/null; then
+        print_success "✓ Cloudflare Origin Certificate found"
+    else
+        print_warning "⚠ Cloudflare Origin Certificate NOT found (optional)"
+    fi
+
     echo ""
     if $all_good; then
         echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
@@ -347,18 +601,22 @@ show_menu() {
         echo -e "${YELLOW}2.${NC} Create Coolify User"
         echo -e "${YELLOW}3.${NC} Install Docker"
         echo -e "${YELLOW}4.${NC} Setup SSH Key"
-        echo -e "${YELLOW}5.${NC} Check Firewall"
-        echo -e "${YELLOW}6.${NC} Verify Setup"
-        echo -e "${YELLOW}7.${NC} Exit"
+        echo -e "${YELLOW}5.${NC} Setup GitHub Container Registry"
+        echo -e "${YELLOW}6.${NC} Setup Cloudflare Origin Certificate"
+        echo -e "${YELLOW}7.${NC} Check Firewall"
+        echo -e "${YELLOW}8.${NC} Verify Setup"
+        echo -e "${YELLOW}9.${NC} Exit"
         echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
 
-        read -rp "$(echo -e "${GREEN}Select an option [1-7]:${NC} ")" choice
+        read -rp "$(echo -e "${GREEN}Select an option [1-9]:${NC} ")" choice
 
         case $choice in
             1)
                 setup_coolify_user
                 install_docker
                 setup_ssh_key
+                setup_github_registry
+                setup_cloudflare_cert
                 check_firewall
                 verify_setup
                 ;;
@@ -372,17 +630,23 @@ show_menu() {
                 setup_ssh_key
                 ;;
             5)
-                check_firewall
+                setup_github_registry
                 ;;
             6)
-                verify_setup
+                setup_cloudflare_cert
                 ;;
             7)
+                check_firewall
+                ;;
+            8)
+                verify_setup
+                ;;
+            9)
                 print_info "Exiting..."
                 exit 0
                 ;;
             *)
-                print_error "Invalid option. Please select 1-7."
+                print_error "Invalid option. Please select 1-9."
                 ;;
         esac
     done
@@ -398,6 +662,8 @@ show_help() {
     echo "  $0 --user             # Create coolify user only"
     echo "  $0 --docker           # Install Docker only"
     echo "  $0 --ssh              # Setup SSH key only"
+    echo "  $0 --github           # Setup GitHub Container Registry only"
+    echo "  $0 --cloudflare       # Setup Cloudflare Origin Certificate only"
     echo "  $0 --firewall         # Check firewall only"
     echo "  $0 --verify           # Verify setup only"
     echo "  $0 --help             # Show this help"
@@ -428,6 +694,8 @@ main() {
                 setup_coolify_user
                 install_docker
                 setup_ssh_key
+                setup_github_registry
+                setup_cloudflare_cert
                 check_firewall
                 verify_setup
                 ;;
@@ -439,6 +707,12 @@ main() {
                 ;;
             --ssh)
                 setup_ssh_key
+                ;;
+            --github)
+                setup_github_registry
+                ;;
+            --cloudflare)
+                setup_cloudflare_cert
                 ;;
             --firewall)
                 check_firewall

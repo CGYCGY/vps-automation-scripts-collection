@@ -25,6 +25,7 @@ sudo ./setup.sh --coolify    # Coolify installation only
 sudo ./setup.sh --swap       # Swap configuration only
 sudo ./setup.sh --minio      # MinIO migration tool
 ./setup.sh --minio-users     # MinIO user & bucket manager
+./setup.sh --postgres        # PostgreSQL manager
 sudo ./setup.sh --help       # Show all options
 ```
 
@@ -36,6 +37,7 @@ sudo ./setup.sh --help       # Show all options
 | **Coolify Setup** | Self-hostable Heroku/Netlify alternative | [coolify/README.md](coolify/README.md) |
 | **MinIO Migration** | Migrate MinIO data between servers | [minio/README.md](minio/README.md) |
 | **MinIO User Manager** | Create users with bucket-specific access | [minio/README.md](minio/README.md) |
+| **PostgreSQL Manager** | Manage databases, users, and permissions | [postgres/README.md](postgres/README.md) |
 | **Swap Config** | RAM-based optimized swap settings | [swap/README.md](swap/README.md) |
 
 ## Supported Systems
@@ -64,6 +66,12 @@ Restricts SSH access to Tailscale network only.
 ```
 Interactive tool for migrating MinIO between servers.
 
+### Manage PostgreSQL
+```bash
+./setup.sh --postgres
+```
+Interactive tool for managing PostgreSQL databases, users, and permissions.
+
 ## Directory Structure
 
 ```
@@ -76,6 +84,9 @@ Interactive tool for migrating MinIO between servers.
 │   ├── minio_migration.sh          # MinIO migration tool
 │   ├── minio_user_bucket_manager.sh # MinIO user & bucket manager
 │   └── README.md                    # MinIO documentation
+├── postgres/
+│   ├── postgres_manager.sh          # PostgreSQL manager
+│   └── README.md                    # PostgreSQL documentation
 ├── swap/
 │   ├── swap-configuration-module.sh # Swap setup script
 │   └── README.md                    # Swap documentation

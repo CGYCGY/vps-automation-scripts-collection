@@ -19,11 +19,17 @@ Interactive tool for managing MinIO users with bucket-specific access permission
 
 ```bash
 chmod +x minio_user_bucket_manager.sh
+
+# Interactive menu
 ./minio_user_bucket_manager.sh
+
+# Quick create mode (user + bucket + .env output)
+./minio_user_bucket_manager.sh --quick
 ```
 
 ## Features
 
+- **Quick Create**: One command to create user + bucket + link them with .env output
 - **Auto-installs MinIO Client (mc)** with architecture detection (amd64/arm64)
 - **Alias Management**: List, create, switch, update URL, and remove MinIO connections
 - **User Management**: Create, delete, enable/disable users
@@ -33,6 +39,7 @@ chmod +x minio_user_bucket_manager.sh
 - **Connection Diagnostics**: Distinguishes between network and credential issues
 - **Docker Support**: Auto-detects container IPs, works with/without sudo
 - **Interactive Interface**: Color-coded menus with clear prompts
+- **Secure Password Generation**: 32-char passwords with safe special chars (@-_+)
 
 ## What This Script Does
 
@@ -59,7 +66,13 @@ chmod +x minio_user_bucket_manager.sh
    - Automatically creates IAM-style policies
    - Compatible with MinIO SDKs (Go, Python, JS, etc.)
 
-4. **Quick Setup Wizard**
+4. **Quick Create** (New!)
+   - One command to create user + bucket + link them
+   - Auto-generates secure 32-char password
+   - Outputs ready-to-use .env format
+   - Access via menu option 0 or `--quick` flag
+
+5. **Quick Setup Wizard** (Legacy)
    - Create a user and assign bucket access in one flow
 
 ## Use Cases
@@ -78,7 +91,48 @@ chmod +x minio_user_bucket_manager.sh
 
 ## Example Workflow
 
-### Create a user with access to a specific bucket
+### Quick Create: New project setup (Recommended)
+
+```bash
+./minio_user_bucket_manager.sh --quick
+```
+
+```
+=== Quick Create: User + Bucket + Access ===
+
+Enter project name (used for username & bucket): myapp
+Bucket name [myapp]:
+Select access type:
+  1) Full access (read, write, delete) [default]
+
+Creating resources...
+✓ Bucket 'myapp' created
+✓ User 'myapp' created
+✓ Policy attached (Full access)
+
+════════════════════════════════════════
+Copy these to your .env file:
+
+# MinIO Configuration
+MINIO_ENDPOINT=http://172.17.0.2:9000
+MINIO_HOST=172.17.0.2
+MINIO_PORT=9000
+MINIO_ACCESS_KEY=myapp
+MINIO_SECRET_KEY=aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV
+MINIO_BUCKET=myapp
+MINIO_USE_SSL=false
+MINIO_REGION=us-east-1
+
+Alternative format (AWS SDK compatible):
+
+AWS_ENDPOINT_URL=http://172.17.0.2:9000
+AWS_ACCESS_KEY_ID=myapp
+AWS_SECRET_ACCESS_KEY=aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV
+AWS_DEFAULT_REGION=us-east-1
+S3_BUCKET=myapp
+```
+
+### Create a user with access to existing bucket
 
 1. Run `./minio_user_bucket_manager.sh`
 2. Select or create an alias pointing to your MinIO server

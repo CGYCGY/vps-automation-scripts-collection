@@ -1396,6 +1396,261 @@ disable_user() {
 }
 
 #===============================================================================
+# Password Generation Function
+#===============================================================================
+
+generate_password() {
+    local length=${1:-32}
+    # Safe characters for .env files and shell scripts
+    # Avoiding: # (comment), $ (variable), & (background), * (glob), % (url), = (delimiter)
+    # Using: A-Z, a-z, 0-9, and safe special chars: @-_+
+    local upper='ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    local lower='abcdefghijklmnopqrstuvwxyz'
+    local digits='0123456789'
+    local special='@-_+'
+    local all="${upper}${lower}${digits}${special}"
+    local password=""
+
+    # Ensure at least 3 of each type
+    for ((j=0; j<3; j++)); do
+        password+="${upper:$((RANDOM % 26)):1}"
+        password+="${lower:$((RANDOM % 26)):1}"
+        password+="${digits:$((RANDOM % 10)):1}"
+        password+="${special:$((RANDOM % 4)):1}"
+    done
+
+    # Fill remaining length with random chars (length - 12 already added)
+    for ((i=12; i<length; i++)); do
+        password+="${all:$((RANDOM % ${#all})):1}"
+    done
+
+    # Shuffle the password
+    echo "$password" | fold -w1 | shuf | tr -d '\n'
+}
+
+#===============================================================================
+# Quick Create Function (User + Bucket + Link)
+#===============================================================================
+
+quick_create() {
+    print_header
+    echo -e "${BLUE}=== Quick Create: User + Bucket + Access ===${NC}"
+    echo ""
+
+    if [ -z "$CURRENT_ALIAS" ]; then
+        print_warning "No alias selected. Let's set one up first."
+        echo ""
+        read -p "Press Enter to continue..."
+        select_alias
+
+        if [ -z "$CURRENT_ALIAS" ]; then
+            return
+        fi
+        print_header
+        echo -e "${BLUE}=== Quick Create: User + Bucket + Access ===${NC}"
+        echo ""
+    fi
+
+    # Get MinIO endpoint URL
+    local minio_url=$(mc alias list "$CURRENT_ALIAS" 2>/dev/null | grep "URL" | awk '{print $3}')
+    local use_ssl="false"
+    if [[ "$minio_url" == https://* ]]; then
+        use_ssl="true"
+    fi
+
+    echo "This will create a new user, bucket, and link them together."
+    echo "Perfect for setting up a new project/application."
+    echo ""
+    echo -e "${CYAN}MinIO Server: $minio_url${NC}"
+    echo ""
+
+    # Get project/username
+    read -p "Enter project name (used for username & bucket): " project_name
+
+    if [ -z "$project_name" ]; then
+        print_error "Project name cannot be empty"
+        press_enter
+        return
+    fi
+
+    # Validate name (lowercase, alphanumeric, hyphens)
+    local sanitized_name=$(echo "$project_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+    if [ "$sanitized_name" != "$project_name" ]; then
+        print_warning "Name sanitized to: $sanitized_name"
+        project_name="$sanitized_name"
+    fi
+
+    # Bucket name (default = project name)
+    echo ""
+    read -p "Bucket name [$project_name]: " bucket_name
+    bucket_name=${bucket_name:-$project_name}
+
+    # Sanitize bucket name
+    bucket_name=$(echo "$bucket_name" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9.-')
+
+    # Username (default = project name)
+    local username="$project_name"
+
+    # Check if user already exists
+    if mc admin user info "$CURRENT_ALIAS" "$username" &> /dev/null; then
+        print_error "User '$username' already exists"
+        press_enter
+        return
+    fi
+
+    # Check if bucket already exists
+    if mc ls "$CURRENT_ALIAS/$bucket_name" &> /dev/null 2>&1; then
+        print_warning "Bucket '$bucket_name' already exists"
+        read -p "Continue and link user to existing bucket? (y/n): " continue_existing
+        if [[ ! $continue_existing =~ ^[Yy]$ ]]; then
+            press_enter
+            return
+        fi
+    fi
+
+    # Access type selection (default: Full)
+    echo ""
+    echo "Select access type:"
+    echo -e "  1) Full access (read, write, delete) ${GREEN}[default]${NC}"
+    echo "  2) Read-write access"
+    echo "  3) Read-only access"
+    echo ""
+    read -p "Selection [1-3, default=1]: " access_choice
+    access_choice=${access_choice:-1}
+
+    # Generate password
+    local password=$(generate_password 32)
+
+    echo ""
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${CYAN}  Creating resources...${NC}"
+    echo -e "${CYAN}════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+
+    # Step 1: Create bucket (if not exists)
+    print_info "Creating bucket '$bucket_name'..."
+    if mc mb "$CURRENT_ALIAS/$bucket_name" 2>/dev/null; then
+        print_success "Bucket '$bucket_name' created"
+    else
+        if mc ls "$CURRENT_ALIAS/$bucket_name" &> /dev/null 2>&1; then
+            print_warning "Bucket '$bucket_name' already exists (using existing)"
+        else
+            print_error "Failed to create bucket"
+            press_enter
+            return
+        fi
+    fi
+
+    # Step 2: Create user
+    print_info "Creating user '$username'..."
+    if mc admin user add "$CURRENT_ALIAS" "$username" "$password" 2>/dev/null; then
+        print_success "User '$username' created"
+    else
+        print_error "Failed to create user"
+        press_enter
+        return
+    fi
+
+    # Step 3: Create and attach policy
+    local actions=""
+    local access_type_name=""
+    case $access_choice in
+        1)
+            actions='"s3:*"'
+            access_type_name="Full"
+            ;;
+        2)
+            actions='"s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation", "s3:ListBucketMultipartUploads", "s3:ListMultipartUploadParts", "s3:AbortMultipartUpload"'
+            access_type_name="Read-write"
+            ;;
+        3)
+            actions='"s3:GetObject", "s3:ListBucket", "s3:GetBucketLocation"'
+            access_type_name="Read-only"
+            ;;
+        *)
+            actions='"s3:*"'
+            access_type_name="Full"
+            ;;
+    esac
+
+    local policy_name="user-${username}-policy"
+    local policy_json=$(cat <<EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [$actions],
+            "Resource": [
+                "arn:aws:s3:::${bucket_name}",
+                "arn:aws:s3:::${bucket_name}/*"
+            ]
+        }
+    ]
+}
+EOF
+)
+
+    local policy_file="/tmp/minio_policy_${username}_$$.json"
+    echo "$policy_json" > "$policy_file"
+
+    print_info "Creating access policy..."
+    mc admin policy remove "$CURRENT_ALIAS" "$policy_name" &> /dev/null
+
+    if mc admin policy create "$CURRENT_ALIAS" "$policy_name" "$policy_file" 2>/dev/null; then
+        print_success "Policy '$policy_name' created"
+
+        print_info "Attaching policy to user..."
+        if mc admin policy attach "$CURRENT_ALIAS" "$policy_name" --user "$username" 2>/dev/null; then
+            print_success "Policy attached ($access_type_name access)"
+        else
+            print_error "Failed to attach policy"
+        fi
+    else
+        print_error "Failed to create policy"
+    fi
+
+    rm -f "$policy_file"
+
+    # Extract host and port for separate vars
+    local endpoint_host=$(echo "$minio_url" | sed -E 's|^https?://||' | cut -d':' -f1 | cut -d'/' -f1)
+    local endpoint_port=$(echo "$minio_url" | sed -E 's|^https?://[^:]+:?||' | cut -d'/' -f1)
+    endpoint_port=${endpoint_port:-9000}
+
+    # Output .env format
+    echo ""
+    echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
+    echo -e "${GREEN}  ✓ Setup Complete!${NC}"
+    echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    echo -e "${CYAN}Copy these to your .env file:${NC}"
+    echo ""
+    echo -e "${YELLOW}# MinIO Configuration${NC}"
+    echo "MINIO_ENDPOINT=$minio_url"
+    echo "MINIO_HOST=$endpoint_host"
+    echo "MINIO_PORT=$endpoint_port"
+    echo "MINIO_ACCESS_KEY=$username"
+    echo "MINIO_SECRET_KEY=$password"
+    echo "MINIO_BUCKET=$bucket_name"
+    echo "MINIO_USE_SSL=$use_ssl"
+    echo "MINIO_REGION=us-east-1"
+    echo ""
+    echo -e "${CYAN}Alternative format (AWS SDK compatible):${NC}"
+    echo ""
+    echo "AWS_ENDPOINT_URL=$minio_url"
+    echo "AWS_ACCESS_KEY_ID=$username"
+    echo "AWS_SECRET_ACCESS_KEY=$password"
+    echo "AWS_DEFAULT_REGION=us-east-1"
+    echo "S3_BUCKET=$bucket_name"
+    echo ""
+    echo -e "${GREEN}════════════════════════════════════════════════════════════════${NC}"
+    echo ""
+    print_warning "IMPORTANT: Save the secret key now! It cannot be retrieved later."
+
+    press_enter
+}
+
+#===============================================================================
 # Policy Management Functions
 #===============================================================================
 
@@ -1624,18 +1879,21 @@ main_menu() {
         print_header
         echo -e "${BLUE}Main Menu${NC}"
         echo ""
+        echo -e "  ${GREEN}0) Quick Create: User + Bucket (with .env output)${NC}"
+        echo ""
         echo "  1) Alias Management (select/create MinIO connection)"
         echo "  2) User Management"
         echo "  3) Bucket Management"
         echo "  4) View Policies"
         echo ""
-        echo "  5) Quick Setup: Create User with Bucket Access"
+        echo "  5) Quick Setup: Create User with Bucket Access (legacy)"
         echo ""
         echo "  q) Quit"
         echo ""
         read -p "Selection: " choice
 
         case $choice in
+            0) quick_create ;;
             1) alias_menu ;;
             2) user_menu ;;
             3) bucket_menu ;;
@@ -1663,7 +1921,56 @@ main_menu() {
 # Main Execution
 #===============================================================================
 
+show_help() {
+    echo "MinIO User & Bucket Manager v${VERSION}"
+    echo ""
+    echo "Usage: $0 [OPTIONS]"
+    echo ""
+    echo "Options:"
+    echo "  --quick, -q    Quick create mode (user + bucket + .env output)"
+    echo "  --help, -h     Show this help message"
+    echo ""
+    echo "Without options, the interactive menu will be displayed."
+    echo ""
+}
+
 main() {
+    # Parse command line arguments
+    case "${1:-}" in
+        --quick|-q)
+            # Check if mc is installed
+            if ! check_mc_installed; then
+                if ! install_mc; then
+                    exit 1
+                fi
+            fi
+
+            # Auto-select alias if only one exists
+            local aliases=($(list_aliases))
+            if [ ${#aliases[@]} -eq 1 ]; then
+                CURRENT_ALIAS="${aliases[0]}"
+                print_info "Using alias: $CURRENT_ALIAS"
+            elif [ ${#aliases[@]} -gt 1 ]; then
+                select_alias
+            fi
+
+            quick_create
+            exit 0
+            ;;
+        --help|-h)
+            show_help
+            exit 0
+            ;;
+        "")
+            # No arguments, continue to interactive mode
+            ;;
+        *)
+            print_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+
     # Check if mc is installed
     if ! check_mc_installed; then
         if ! install_mc; then

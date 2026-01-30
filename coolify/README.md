@@ -28,6 +28,8 @@ Prepare servers to be connected to an existing Coolify dashboard as managed/remo
 | 👤 **User Setup** | Creates `coolify` user with passwordless sudo |
 | 🐳 **Docker Install** | Installs Docker Engine if not present |
 | 🔑 **SSH Setup** | Configures SSH key for Coolify access |
+| 🐙 **GitHub Registry** | Configure authentication for GitHub Container Registry (ghcr.io) |
+| 🔒 **Cloudflare SSL** | Setup Cloudflare Origin Certificates for SSL/TLS |
 | 🔥 **Firewall Check** | Smart firewall configuration (only if needed) |
 | ✅ **Verification** | Tests setup and shows next steps |
 
@@ -44,6 +46,8 @@ Prepare servers to be connected to an existing Coolify dashboard as managed/remo
 - Root access or sudo privileges
 - Existing Coolify dashboard (on another server)
 - SSH public key from Coolify dashboard
+- GitHub account with Personal Access Token (optional, for private registry)
+- A domain configured with Cloudflare (optional, for SSL setup)
 
 ## 🚀 Quick Start
 
@@ -125,11 +129,13 @@ sudo ./coolify-remote-setup.sh
 sudo ./coolify-remote-setup.sh --all
 
 # Individual steps
-sudo ./coolify-remote-setup.sh --user      # Create coolify user only
-sudo ./coolify-remote-setup.sh --docker    # Install Docker only
-sudo ./coolify-remote-setup.sh --ssh       # Setup SSH key only
-sudo ./coolify-remote-setup.sh --firewall  # Check firewall only
-sudo ./coolify-remote-setup.sh --verify    # Verify setup only
+sudo ./coolify-remote-setup.sh --user       # Create coolify user only
+sudo ./coolify-remote-setup.sh --docker     # Install Docker only
+sudo ./coolify-remote-setup.sh --ssh        # Setup SSH key only
+sudo ./coolify-remote-setup.sh --github     # Setup GitHub registry only
+sudo ./coolify-remote-setup.sh --cloudflare # Setup Cloudflare cert only
+sudo ./coolify-remote-setup.sh --firewall   # Check firewall only
+sudo ./coolify-remote-setup.sh --verify     # Verify setup only
 
 # Help
 sudo ./coolify-remote-setup.sh --help

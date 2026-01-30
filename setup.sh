@@ -52,10 +52,13 @@ print_menu() {
     echo -e "  ${GREEN}6)${NC} MinIO User & Bucket Manager"
     echo -e "     ${YELLOW}Create users with bucket-specific access permissions${NC}"
     echo ""
-    echo -e "  ${GREEN}7)${NC} Swap Configuration"
+    echo -e "  ${GREEN}7)${NC} PostgreSQL Manager"
+    echo -e "     ${YELLOW}Manage databases, users, and permissions${NC}"
+    echo ""
+    echo -e "  ${GREEN}8)${NC} Swap Configuration"
     echo -e "     ${YELLOW}Configure RAM-based optimized swap settings${NC}"
     echo ""
-    echo -e "  ${GREEN}8)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
+    echo -e "  ${GREEN}9)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
     echo -e "     ${YELLOW}Complete new server setup with all essentials${NC}"
     echo ""
     echo -e "  ${GREEN}q)${NC} Quit"
@@ -210,6 +213,22 @@ run_minio_user_manager() {
     run_script "$SCRIPT_DIR/minio/minio_user_bucket_manager.sh" "MinIO User Manager"
 }
 
+run_postgres_manager() {
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  PostgreSQL Manager${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}This script will:${NC}"
+    echo "  - Manage PostgreSQL connections (Docker/Remote)"
+    echo "  - Create/delete databases"
+    echo "  - Create/delete users with secure passwords"
+    echo "  - Grant/revoke permissions"
+    echo "  - Backup and restore databases"
+    echo ""
+
+    run_script "$SCRIPT_DIR/postgres/postgres_manager.sh" "PostgreSQL Manager"
+}
+
 run_swap_config() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  Swap Configuration${NC}"
@@ -298,6 +317,7 @@ show_help() {
     echo "  --coolify-remote    Run Coolify remote server setup"
     echo "  --minio             Run MinIO migration tool"
     echo "  --minio-users       Run MinIO user & bucket manager"
+    echo "  --postgres          Run PostgreSQL manager"
     echo "  --swap              Run swap configuration"
     echo "  --full              Run full server setup (swap + tailscale + coolify)"
     echo "  --help, -h          Show this help message"
@@ -359,6 +379,10 @@ main() {
             run_minio_user_manager
             exit 0
             ;;
+        --postgres)
+            run_postgres_manager
+            exit 0
+            ;;
         --swap)
             check_root
             run_swap_config
@@ -380,7 +404,7 @@ main() {
 
     while true; do
         print_menu
-        read -p "Select an option [1-8, q]: " choice
+        read -p "Select an option [1-9, q]: " choice
         echo ""
 
         case $choice in
@@ -407,10 +431,13 @@ main() {
                 run_minio_user_manager
                 ;;
             7)
+                run_postgres_manager
+                ;;
+            8)
                 check_root
                 run_swap_config
                 ;;
-            8)
+            9)
                 check_root
                 run_full_setup
                 ;;

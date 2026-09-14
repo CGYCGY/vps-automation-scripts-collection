@@ -39,7 +39,13 @@ ALIAS_DEFS=(
     'dc|alias dc="docker compose"'
     'jj|alias jj="just"'
 )
-# Project navigation, including `cdp add`, lives in https://github.com/CGYCGY/shell-utils.
+# Project navigation (cdp) is maintained in CGYCGY/shell-utils. Upstream is
+# fetched first so a new box gets the current version; the copy beside this
+# script is the offline fallback. Refresh it now and then:
+#   curl -fsSL $PN_URL -o ai-dev/project-navigator.sh
+PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh"
+PN_FALLBACK="${SCRIPT_DIR}/project-navigator.sh"
+PN_FILE="$HOME/.project-navigator.sh"
 
 # "repository filename|user destination". These stay as separate files because
 # each agent needs a different model identifier and may gain tool-specific rules.
@@ -58,7 +64,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-instructions aliases)
+STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-instructions aliases project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -220,6 +226,30 @@ detect_agent_instructions() {
     return 1
 }
 
+# Two independent halves: the file, and ~/.bashrc sourcing it. Either can already
+# be in place on its own, so both are checked and only the missing half is done.
+PN_NEED_FILE=0
+PN_NEED_SOURCE=0
+
+detect_project_navigator() {
+    PN_NEED_FILE=0; PN_NEED_SOURCE=0
+    [ -f "$PN_FILE" ] || PN_NEED_FILE=1
+    grep -q 'project-navigator\.sh' "$HOME/.bashrc" 2>/dev/null || PN_NEED_SOURCE=1
+
+    if [ "$PN_NEED_FILE" -eq 0 ] && [ "$PN_NEED_SOURCE" -eq 0 ]; then
+        local n
+        n="$(grep -c "^[[:space:]]*\['" "$PN_FILE" 2>/dev/null || true)"
+        DETAIL="cdp ready, ${n:-0} project(s) registered"
+        return 0
+    fi
+
+    local what=""
+    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install ~/.project-navigator.sh "
+    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from ~/.bashrc"
+    DETAIL="will ${what% }"
+    return 1
+}
+
 #############################################
 # INSTALLERS
 #############################################
@@ -305,6 +335,44 @@ install_agent_instructions() {
     done
 }
 
+# The upstream registry is example paths, so it is emptied on the way in —
+# populate with `cdp add <name>`, which rewrites the file in place. An existing
+# file is never touched: it holds that device's own registry.
+install_project_navigator() {
+    if [ "$PN_NEED_FILE" -eq 1 ]; then
+        local src tmp
+        tmp="$(mktemp)"
+        if curl -fsSL --max-time 30 "$PN_URL" -o "$tmp" 2>/dev/null; then
+            src="$tmp"; log_info "fetched project-navigator.sh from shell-utils"
+        elif [ -f "$PN_FALLBACK" ]; then
+            src="$PN_FALLBACK"; log_warn "upstream unreachable — using the bundled copy"
+        else
+            rm -f "$tmp"; log_error "could not fetch $PN_URL and no bundled copy at $PN_FALLBACK"; return 1
+        fi
+        grep -q '^declare -gA PROJECTS=(' "$src" \
+            || { rm -f "$tmp"; log_error "no PROJECTS block in project-navigator.sh — upstream changed shape"; return 1; }
+        awk '/^declare -gA PROJECTS=\(/ { print; inblock=1; next }
+             inblock && /^\)/          { print; inblock=0; next }
+             inblock                    { next }
+                                        { print }' "$src" > "$PN_FILE"
+        rm -f "$tmp"
+        log_ok "installed ~/.project-navigator.sh with an empty registry — add projects with 'cdp add <name>'"
+    else
+        log_warn "~/.project-navigator.sh already exists — left untouched"
+    fi
+
+    if [ "$PN_NEED_SOURCE" -eq 1 ]; then
+        backup_once "$HOME/.bashrc"
+        cat >> "$HOME/.bashrc" <<'EOF'
+
+# >>> new-device-setup: cdp >>>
+[ -f "$HOME/.project-navigator.sh" ] && . "$HOME/.project-navigator.sh"
+# <<< new-device-setup: cdp <<<
+EOF
+        log_ok "~/.bashrc now sources the project navigator"
+    fi
+}
+
 install_aliases() {
     backup_once "$HOME/.bash_aliases"
     local entry
@@ -329,19 +397,19 @@ survey() {
     PLAN=()
     echo
     echo "${C_BOLD}Survey${C_RESET}"
-    printf '  %-16s %-9s %s\n' "COMPONENT" "STATUS" "DETAIL"
+    printf '  %-18s %-9s %s\n' "COMPONENT" "STATUS" "DETAIL"
     local s fn
     for s in "${STEPS[@]}"; do
         fn="detect_${s//-/_}"
         DETAIL=""
         if [ "$OPT_FORCE" -eq 1 ]; then
             PLAN+=("$s")
-            printf '  %-16s %b%-9s%b %s\n' "$s" "$C_YELLOW" "forced" "$C_RESET" "reinstall requested"
+            printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "forced" "$C_RESET" "reinstall requested"
         elif "$fn"; then
-            printf '  %-16s %b%-9s%b %s%s%s\n' "$s" "$C_GREEN" "present" "$C_RESET" "$C_DIM" "$DETAIL" "$C_RESET"
+            printf '  %-18s %b%-9s%b %s%s%s\n' "$s" "$C_GREEN" "present" "$C_RESET" "$C_DIM" "$DETAIL" "$C_RESET"
         else
             PLAN+=("$s")
-            printf '  %-16s %b%-9s%b %s\n' "$s" "$C_YELLOW" "install" "$C_RESET" "$DETAIL"
+            printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "install" "$C_RESET" "$DETAIL"
         fi
     done
     echo
@@ -417,6 +485,7 @@ ${C_BOLD}Still to do by hand — each tool authenticates separately:${C_RESET}
 ${C_BOLD}Then:${C_RESET}
   exec bash -l    reload the shell
   upd             confirm every tool updates
+  cdp add <name>  register this device's projects (the registry starts empty)
 
 ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
   npm i -g agent-browser agent-device @cometix/ccline wrangler
@@ -428,7 +497,7 @@ ${C_BOLD}Config worth copying from the old device:${C_RESET}
   The shared Claude, Codex, and Antigravity instructions are already installed.
   Copy private credentials and remaining tool state separately when needed.
 
-${C_BOLD}Project navigator:${C_RESET} https://github.com/CGYCGY/shell-utils (includes cdp add)
+${C_BOLD}Project navigator:${C_RESET} installed from https://github.com/CGYCGY/shell-utils
 EOF
 }
 

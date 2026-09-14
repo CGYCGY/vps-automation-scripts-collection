@@ -19,7 +19,7 @@ From the repository root:
 
 ## What It Does
 
-The script installs nvm and Node.js, Bun, Claude Code, Codex, Pi, Prime Agent, Herdr, Antigravity (`agy`), and the author's shell aliases. It also configures the user shell paths required by those tools and deploys the tracked agent instructions to:
+The script installs nvm and Node.js, Bun, Claude Code, Codex, Pi, Prime Agent, Herdr, Antigravity (`agy`), the author's shell aliases, and the `cdp` project navigator from [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils). It also configures the user shell paths required by those tools and deploys the tracked agent instructions to:
 
 - `~/.claude/CLAUDE.md`
 - `~/.codex/AGENTS.md`
@@ -30,6 +30,16 @@ The source files live under `agent-instructions/`. Existing destination files ar
 This is the author's toolchain. Edit the `APT_PACKAGES` and `ALIAS_DEFS` arrays near the top of `ai-dev-setup.sh` to customize the packages and aliases.
 
 The three instruction files intentionally remain separate so each tool can use its own model identifiers and tool-specific guidance. Update the tracked copies before running the setup on another machine.
+
+## Project Navigator
+
+`project-navigator.sh` is fetched from shell-utils at install time so a new machine gets the current version; the copy tracked here is the offline fallback. It lands at `~/.project-navigator.sh` with an empty registry — the upstream entries are example paths — and `~/.bashrc` is made to source it. Register projects on the new machine with `cdp add <name>`. An existing `~/.project-navigator.sh` is never overwritten, since it holds that machine's own registry.
+
+Refresh the bundled fallback when upstream changes:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh -o ai-dev/project-navigator.sh
+```
 
 ## Options
 
@@ -71,6 +81,5 @@ prime-agent     # configure an API key
 herdr --help    # follow the tool's authentication guidance
 exec bash -l    # reload shell configuration
 upd             # verify the installed tools update successfully
+cdp add <name>  # register this machine's projects
 ```
-
-For project navigation, including `cdp add`, see [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils).

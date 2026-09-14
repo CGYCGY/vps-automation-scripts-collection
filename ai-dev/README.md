@@ -19,9 +19,17 @@ From the repository root:
 
 ## What It Does
 
-The script installs nvm and Node.js, Bun, Claude Code, Codex, Pi, Prime Agent, Herdr, Antigravity (`agy`), and the author's shell aliases. It also configures the user shell paths required by those tools.
+The script installs nvm and Node.js, Bun, Claude Code, Codex, Pi, Prime Agent, Herdr, Antigravity (`agy`), and the author's shell aliases. It also configures the user shell paths required by those tools and deploys the tracked agent instructions to:
+
+- `~/.claude/CLAUDE.md`
+- `~/.codex/AGENTS.md`
+- `~/.gemini/GEMINI.md`
+
+The source files live under `agent-instructions/`. Existing destination files are backed up with a timestamp before they are replaced, and reruns skip files that already match.
 
 This is the author's toolchain. Edit the `APT_PACKAGES` and `ALIAS_DEFS` arrays near the top of `ai-dev-setup.sh` to customize the packages and aliases.
+
+The three instruction files intentionally remain separate so each tool can use its own model identifiers and tool-specific guidance. Update the tracked copies before running the setup on another machine.
 
 ## Options
 

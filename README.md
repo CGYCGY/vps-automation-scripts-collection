@@ -80,6 +80,10 @@ Secures remote access with Tailscale, then installs the AI development toolchain
 ├── setup.sh              # Main entry point
 ├── ai-dev/
 │   ├── ai-dev-setup.sh   # AI development toolchain setup
+│   ├── agent-instructions/
+│   │   ├── CLAUDE.md     # Claude Code global instructions
+│   │   ├── AGENTS.md     # Codex global instructions
+│   │   └── GEMINI.md     # Antigravity global instructions
 │   └── README.md         # AI development documentation
 ├── coolify/
 │   ├── coolify-setup.sh  # Coolify installation script

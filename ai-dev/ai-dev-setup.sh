@@ -21,6 +21,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTRUCTIONS_DIR="${SCRIPT_DIR}/agent-instructions"
+
 NODE_VERSION="${NODE_VERSION:-node}"   # "node" = latest release; or "24", "25.2.1", "--lts"
 NVM_VERSION="${NVM_VERSION:-}"         # empty = resolve nvm's latest tag; or "v0.40.7"
 
@@ -38,6 +41,14 @@ ALIAS_DEFS=(
 )
 # Project navigation, including `cdp add`, lives in https://github.com/CGYCGY/shell-utils.
 
+# "repository filename|user destination". These stay as separate files because
+# each agent needs a different model identifier and may gain tool-specific rules.
+INSTRUCTION_FILES=(
+    "CLAUDE.md|$HOME/.claude/CLAUDE.md"
+    "AGENTS.md|$HOME/.codex/AGENTS.md"
+    "GEMINI.md|$HOME/.gemini/GEMINI.md"
+)
+
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/new-device-setup"
 STATE_FILE="${STATE_DIR}/in-progress"
 LOG_FILE="${STATE_DIR}/setup.log"
@@ -47,7 +58,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy aliases)
+STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-instructions aliases)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -69,7 +80,7 @@ log_error() { echo "${C_RED}[fail]${C_RESET} $*" >&2; }
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# One timestamped copy per run, before this script appends to a dotfile.
+# One timestamped copy per run, before this script changes an existing user file.
 backup_once() {
     local f="$1"
     [ -f "$f" ] || return 0
@@ -194,6 +205,21 @@ detect_prime_agent() { detect_tool prime-agent; }
 detect_herdr()       { detect_tool herdr; }
 detect_agy()         { detect_tool agy; }
 
+detect_agent_instructions() {
+    local entry filename target pending=()
+    for entry in "${INSTRUCTION_FILES[@]}"; do
+        filename="${entry%%|*}"
+        target="${entry#*|}"
+        cmp -s "$INSTRUCTIONS_DIR/$filename" "$target" 2>/dev/null || pending+=("$filename")
+    done
+    if [ ${#pending[@]} -eq 0 ]; then
+        DETAIL="all ${#INSTRUCTION_FILES[@]} files match"
+        return 0
+    fi
+    DETAIL="will install/update: ${pending[*]}"
+    return 1
+}
+
 #############################################
 # INSTALLERS
 #############################################
@@ -263,6 +289,20 @@ install_agy() {
     curl -fsSL https://antigravity.google/cli/install.sh | bash
     hash -r
     have agy && agy install
+}
+
+install_agent_instructions() {
+    local entry filename target
+    for entry in "${INSTRUCTION_FILES[@]}"; do
+        filename="${entry%%|*}"
+        target="${entry#*|}"
+        if ! cmp -s "$INSTRUCTIONS_DIR/$filename" "$target" 2>/dev/null; then
+            backup_once "$target"
+            mkdir -p "$(dirname "$target")"
+            install -m 0644 "$INSTRUCTIONS_DIR/$filename" "$target"
+            log_ok "installed $filename -> $target"
+        fi
+    done
 }
 
 install_aliases() {
@@ -385,7 +425,8 @@ ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
   sudo apt install -y gh
 
 ${C_BOLD}Config worth copying from the old device:${C_RESET}
-  scp -r ~/.claude ~/.claude.json ~/.codex ~/.pi ~/.agents ~/.gitconfig newdevice:~/
+  The shared Claude, Codex, and Antigravity instructions are already installed.
+  Copy private credentials and remaining tool state separately when needed.
 
 ${C_BOLD}Project navigator:${C_RESET} https://github.com/CGYCGY/shell-utils (includes cdp add)
 EOF

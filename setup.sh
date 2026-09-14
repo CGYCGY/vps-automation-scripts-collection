@@ -55,7 +55,10 @@ print_menu() {
     echo -e "  ${GREEN}7)${NC} Swap Configuration"
     echo -e "     ${YELLOW}Configure RAM-based optimized swap settings${NC}"
     echo ""
-    echo -e "  ${GREEN}8)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
+    echo -e "  ${GREEN}8)${NC} AI Development Toolchain Setup"
+    echo -e "     ${YELLOW}Install the author's AI coding-agent toolchain for remote development${NC}"
+    echo ""
+    echo -e "  ${GREEN}9)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
     echo -e "     ${YELLOW}Complete new server setup with all essentials${NC}"
     echo ""
     echo -e "  ${GREEN}q)${NC} Quit"
@@ -229,6 +232,26 @@ run_swap_config() {
     fi
 }
 
+run_ai_dev() {
+    if [[ $EUID -eq 0 ]]; then
+        echo -e "${RED}Error: AI development setup must run as the normal user, not root.${NC}"
+        echo -e "${YELLOW}Run without sudo: $0 --ai-dev${NC}"
+        return 1
+    fi
+
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${CYAN}  AI Development Toolchain Setup${NC}"
+    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}This script will:${NC}"
+    echo "  - Install nvm, Node.js, and Bun"
+    echo "  - Install AI coding agents and command aliases"
+    echo "  - Configure the current user's shell environment"
+    echo ""
+
+    run_script "$SCRIPT_DIR/ai-dev/ai-dev-setup.sh" "AI Development Toolchain Setup"
+}
+
 run_full_setup() {
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${CYAN}  Full Server Setup${NC}"
@@ -299,6 +322,7 @@ show_help() {
     echo "  --minio             Run MinIO migration tool"
     echo "  --minio-users       Run MinIO user & bucket manager"
     echo "  --swap              Run swap configuration"
+    echo "  --ai-dev            Run AI development toolchain setup (without sudo)"
     echo "  --full              Run full server setup (swap + tailscale + coolify)"
     echo "  --help, -h          Show this help message"
     echo ""
@@ -310,6 +334,7 @@ show_help() {
     echo "  sudo $0 --coolify        # Coolify dashboard install"
     echo "  sudo $0 --coolify-remote # Coolify remote server setup"
     echo "  $0 --minio-users         # MinIO user management"
+    echo "  $0 --ai-dev             # AI development toolchain setup"
     echo ""
 }
 
@@ -364,6 +389,10 @@ main() {
             run_swap_config
             exit 0
             ;;
+        --ai-dev)
+            run_ai_dev
+            exit 0
+            ;;
         --full)
             check_root
             run_full_setup
@@ -380,7 +409,7 @@ main() {
 
     while true; do
         print_menu
-        read -p "Select an option [1-8, q]: " choice
+        read -p "Select an option [1-9, q]: " choice
         echo ""
 
         case $choice in
@@ -411,6 +440,9 @@ main() {
                 run_swap_config
                 ;;
             8)
+                run_ai_dev
+                ;;
+            9)
                 check_root
                 run_full_setup
                 ;;

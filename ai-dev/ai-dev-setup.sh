@@ -27,7 +27,10 @@ INSTRUCTIONS_DIR="${SCRIPT_DIR}/agent-instructions"
 NODE_VERSION="${NODE_VERSION:-node}"   # "node" = latest release; or "24", "25.2.1", "--lts"
 NVM_VERSION="${NVM_VERSION:-}"         # empty = resolve nvm's latest tag; or "v0.40.7"
 
-APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db)
+# libatomic1 is not optional: every node build links libatomic.so.1, and minimal
+# images ship without it — nvm unpacks fine and the first npm-based agent then
+# dies on a linker error that names neither node nor the package.
+APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db libatomic1)
 
 # "name|full definition line". Merged in one at a time: an alias already defined
 # in ~/.bash_aliases is left exactly as the device has it, never rewritten.

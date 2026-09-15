@@ -44,11 +44,15 @@ so a clone needs no `chmod` — unlike a raw download, which carries no file mod
 
 ## What It Does
 
-The script installs nvm and Node.js, Bun, Claude Code, Codex, Pi, Prime Agent, Herdr, Antigravity (`agy`), the author's shell aliases, and the `cdp` project navigator from [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils). It also configures the user shell paths required by those tools and deploys the tracked agent instructions to:
+The script installs nvm and Node.js, Bun, Claude Code, Codex, Pi, Prime Agent, Herdr, Antigravity (`agy`), agent-browser, the author's shell aliases, and the `cdp` project navigator from [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils). It also configures the user shell paths required by those tools and deploys the tracked agent instructions to:
 
 - `~/.claude/CLAUDE.md`
 - `~/.codex/AGENTS.md`
 - `~/.gemini/GEMINI.md`
+
+agent-browser also downloads Chrome for Testing into `~/.agent-browser` and
+installs the system libraries headless Chrome needs, so the agents can drive a
+browser on a server with no desktop.
 
 The source files live under `agent-instructions/`. Existing destination files are backed up with a timestamp before they are replaced, and reruns skip files that already match.
 

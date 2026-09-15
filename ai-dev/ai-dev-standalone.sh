@@ -331,7 +331,30 @@ EOF
 install_claude()      { curl -fsSL https://claude.ai/install.sh | bash; }
 install_codex()       { load_nvm; npm i -g @openai/codex; }
 install_pi()          { bun add -g @earendil-works/pi-coding-agent; }
-install_prime_agent() { load_nvm; curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh | sh; }
+# Prime Intellect's installer asks twice, and its prompts read /dev/tty directly,
+# so neither a pipe nor an env var can answer them: PRIME_AGENT_INSTALLER_
+# NONINTERACTIVE covers only the native-binary path, and the npm confirmation has
+# no override at all. Taking the controlling terminal away is the supported way
+# through — each prompt reports no terminal and proceeds with its default. The
+# survey confirmation above is this script's consent point; re-asking per vendor
+# is noise. Run through a file, not a pipe: redirecting stdin to /dev/null would
+# otherwise leave sh reading an empty script. setsid needs -w or it forks and the
+# next step races this one.
+install_prime_agent() {
+    load_nvm
+    local installer rc=0
+    installer="$(mktemp)"
+    curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh -o "$installer"
+    if have setsid; then
+        PRIME_AGENT_INSTALLER_NONINTERACTIVE=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 \
+            setsid -w sh "$installer" < /dev/null || rc=$?
+    else
+        PRIME_AGENT_INSTALLER_NONINTERACTIVE=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 \
+            sh "$installer" || rc=$?
+    fi
+    rm -f "$installer"
+    return "$rc"
+}
 install_herdr()       { curl -fsSL https://herdr.dev/install.sh | sh; }
 
 install_agy() {

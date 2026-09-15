@@ -54,7 +54,7 @@ ALIAS_DEFS=(
     'cc|alias cc="claude --dangerously-skip-permissions"'
     'aa|alias aa="agy --dangerously-skip-permissions"'
     'pa|alias pa="prime-agent"'
-    'upd|alias upd="claude update && codex update && pi update && prime-agent update && herdr update && agy update"'
+    'upd|alias upd="claude update && codex update && pi update && prime-agent update && herdr update && agy update && agent-browser upgrade"'
     'dc|alias dc="docker compose"'
     'jj|alias jj="just"'
 )
@@ -83,7 +83,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-instructions aliases project-navigator)
+STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions aliases project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -230,6 +230,21 @@ detect_prime_agent() { detect_tool prime-agent; }
 detect_herdr()       { detect_tool herdr; }
 detect_agy()         { detect_tool agy; }
 
+# The CLI drives nothing on its own: Chrome for Testing is a separate per-user
+# download under ~/.agent-browser/browsers, so a CLI without it counts as absent.
+detect_agent_browser() {
+    if ! have agent-browser; then
+        DETAIL="not on PATH"
+        return 1
+    fi
+    DETAIL="$(tool_version agent-browser)"
+    [ -n "$DETAIL" ] || DETAIL="installed"
+    if ! compgen -G "$HOME/.agent-browser/browsers/*" >/dev/null; then
+        DETAIL="${DETAIL}, no browser binaries"
+        return 1
+    fi
+}
+
 detect_agent_instructions() {
     local entry filename target pending=()
     for entry in "${INSTRUCTION_FILES[@]}"; do
@@ -361,6 +376,16 @@ install_agy() {
     curl -fsSL https://antigravity.google/cli/install.sh | bash
     hash -r
     have agy && agy install
+}
+
+install_agent_browser() {
+    load_nvm
+    npm i -g agent-browser
+    hash -r
+    # Chrome for Testing downloads into ~/.agent-browser, but headless Chrome also
+    # needs shared libraries a minimal server image omits; --with-deps installs
+    # them and fails loudly rather than leaving a browser that cannot start.
+    agent-browser install --with-deps
 }
 
 install_agent_instructions() {
@@ -513,12 +538,12 @@ report() {
     echo
     echo "${C_BOLD}Installed:${C_RESET}"
     local t v
-    for t in claude codex pi prime-agent herdr agy; do
+    for t in claude codex pi prime-agent herdr agy agent-browser; do
         if have "$t"; then
             v="$(tool_version "$t")"
-            printf '  %b %-12s %s\n' "${C_GREEN}✓${C_RESET}" "$t" "${v:-ok}"
+            printf '  %b %-14s %s\n' "${C_GREEN}✓${C_RESET}" "$t" "${v:-ok}"
         else
-            printf '  %b %-12s %s\n' "${C_RED}✗${C_RESET}" "$t" "not on PATH — open a new shell and re-check"
+            printf '  %b %-14s %s\n' "${C_RED}✗${C_RESET}" "$t" "not on PATH — open a new shell and re-check"
         fi
     done
     cat <<EOF
@@ -537,7 +562,7 @@ ${C_BOLD}Then:${C_RESET}
   cdp add <name>  register this device's projects (the registry starts empty)
 
 ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
-  npm i -g agent-browser agent-device @cometix/ccline wrangler
+  npm i -g agent-device @cometix/ccline wrangler
   bun add -g dispatch
   curl -LsSf https://astral.sh/uv/install.sh | sh
   sudo apt install -y gh

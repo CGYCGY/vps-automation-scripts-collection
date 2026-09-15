@@ -61,7 +61,7 @@ print_menu() {
     echo -e "  ${GREEN}9)${NC} AI Development Toolchain Setup"
     echo -e "     ${YELLOW}Install the author's AI coding-agent toolchain for remote development${NC}"
     echo ""
-    echo -e "  ${GREEN}10)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
+    echo -e "  ${GREEN}0)${NC} Full Server Setup (Tailscale + Swap + Coolify)"
     echo -e "     ${YELLOW}Complete new server setup with all essentials${NC}"
     echo ""
     echo -e "  ${GREEN}q)${NC} Quit"
@@ -433,7 +433,7 @@ main() {
 
     while true; do
         print_menu
-        read -p "Select an option [1-10, q]: " choice
+        read -p "Select an option [0-9, q]: " choice
         echo ""
 
         case $choice in
@@ -469,7 +469,7 @@ main() {
             9)
                 run_ai_dev
                 ;;
-            10)
+            0)
                 check_root
                 run_full_setup
                 ;;

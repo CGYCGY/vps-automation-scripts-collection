@@ -40,7 +40,7 @@ sudo ./setup.sh --help       # Show all options
 | **MinIO User Manager** | Create users with bucket-specific access | [minio/README.md](minio/README.md) |
 | **PostgreSQL Manager** | Manage databases, users, and permissions | [postgres/README.md](postgres/README.md) |
 | **Swap Config** | RAM-based optimized swap settings | [swap/README.md](swap/README.md) |
-| **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain | [ai-dev/README.md](ai-dev/README.md) |
+| **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available) | [ai-dev/README.md](ai-dev/README.md) |
 
 ## Supported Systems
 
@@ -88,6 +88,8 @@ Secures remote access with Tailscale, then installs the AI development toolchain
 ├── setup.sh              # Main entry point
 ├── ai-dev/
 │   ├── ai-dev-setup.sh   # AI development toolchain setup
+│   ├── ai-dev-standalone.sh # Generated single-file installer
+│   ├── build-standalone.sh  # Regenerates the single-file installer
 │   ├── agent-instructions/
 │   │   ├── CLAUDE.md     # Claude Code global instructions
 │   │   ├── AGENTS.md     # Codex global instructions

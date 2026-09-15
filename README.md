@@ -26,6 +26,7 @@ sudo ./setup.sh --swap       # Swap configuration only
 sudo ./setup.sh --minio      # MinIO migration tool
 ./setup.sh --minio-users     # MinIO user & bucket manager
 ./setup.sh --postgres        # PostgreSQL manager
+./setup.sh --ai-dev          # AI development toolchain setup (run without sudo)
 sudo ./setup.sh --help       # Show all options
 ```
 
@@ -39,6 +40,7 @@ sudo ./setup.sh --help       # Show all options
 | **MinIO User Manager** | Create users with bucket-specific access | [minio/README.md](minio/README.md) |
 | **PostgreSQL Manager** | Manage databases, users, and permissions | [postgres/README.md](postgres/README.md) |
 | **Swap Config** | RAM-based optimized swap settings | [swap/README.md](swap/README.md) |
+| **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain | [ai-dev/README.md](ai-dev/README.md) |
 
 ## Supported Systems
 
@@ -72,11 +74,25 @@ Interactive tool for migrating MinIO between servers.
 ```
 Interactive tool for managing PostgreSQL databases, users, and permissions.
 
+### Remote AI Dev Box
+```bash
+sudo ./setup.sh --tailscale
+./setup.sh --ai-dev
+```
+Secures remote access with Tailscale, then installs the AI development toolchain for the normal user.
+
 ## Directory Structure
 
 ```
 .
 ├── setup.sh              # Main entry point
+├── ai-dev/
+│   ├── ai-dev-setup.sh   # AI development toolchain setup
+│   ├── agent-instructions/
+│   │   ├── CLAUDE.md     # Claude Code global instructions
+│   │   ├── AGENTS.md     # Codex global instructions
+│   │   └── GEMINI.md     # Antigravity global instructions
+│   └── README.md         # AI development documentation
 ├── coolify/
 │   ├── coolify-setup.sh  # Coolify installation script
 │   └── README.md         # Coolify documentation
@@ -108,7 +124,7 @@ Interactive tool for managing PostgreSQL databases, users, and permissions.
 
 ## Security Considerations
 
-- All scripts require root/sudo for system modifications
+- System-level scripts require root/sudo; AI Dev Setup must run as the normal user
 - Credentials stored with restricted permissions (mode 600)
 - Tailscale restricts SSH to private network
 - Scripts are idempotent (safe to run multiple times)

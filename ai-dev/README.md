@@ -2,6 +2,8 @@
 
 Bootstraps a VPS or local box with the author's AI coding-agent toolchain so it can be used for remote AI-assisted development.
 
+**On a Mac?** Use [`macos/ai-dev-setup-macos.sh`](macos/README.md) instead. It installs the same toolchain through Homebrew and zsh.
+
 ## Quick Start
 
 On a new server or device, download the standalone file and run it. It carries

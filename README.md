@@ -40,7 +40,7 @@ sudo ./setup.sh --help       # Show all options
 | **MinIO User Manager** | Create users with bucket-specific access | [minio/README.md](minio/README.md) |
 | **PostgreSQL Manager** | Manage databases, users, and permissions | [postgres/README.md](postgres/README.md) |
 | **Swap Config** | RAM-based optimized swap settings | [swap/README.md](swap/README.md) |
-| **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available) | [ai-dev/README.md](ai-dev/README.md) |
+| **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available; [macOS version](ai-dev/macos/README.md)) | [ai-dev/README.md](ai-dev/README.md) |
 
 ## Supported Systems
 
@@ -94,6 +94,10 @@ Secures remote access with Tailscale, then installs the AI development toolchain
 │   │   ├── CLAUDE.md     # Claude Code global instructions
 │   │   ├── AGENTS.md     # Codex global instructions
 │   │   └── GEMINI.md     # Antigravity global instructions
+│   ├── macos/
+│   │   ├── ai-dev-setup-macos.sh  # macOS (Homebrew + zsh) version
+│   │   ├── project-navigator.zsh  # zsh cdp offline fallback
+│   │   └── README.md              # macOS documentation
 │   └── README.md         # AI development documentation
 ├── coolify/
 │   ├── coolify-setup.sh  # Coolify installation script

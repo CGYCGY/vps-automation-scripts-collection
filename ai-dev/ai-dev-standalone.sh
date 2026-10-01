@@ -11,7 +11,7 @@ set -euo pipefail
 
 AI_DEV_TMP="$(mktemp -d)"
 trap 'rm -rf "$AI_DEV_TMP"' EXIT
-mkdir -p "$AI_DEV_TMP/agent-instructions"
+mkdir -p "$AI_DEV_TMP/agent-instructions" "$AI_DEV_TMP/claude"
 
 cat > "$AI_DEV_TMP/ai-dev-setup.sh" <<'AI_DEV_PAYLOAD_EOF'
 #!/usr/bin/env bash
@@ -46,7 +46,9 @@ NVM_VERSION="${NVM_VERSION:-}"         # empty = resolve nvm's latest tag; or "v
 # libatomic1 is not optional: every node build links libatomic.so.1, and minimal
 # images ship without it — nvm unpacks fine and the first npm-based agent then
 # dies on a linker error that names neither node nor the package.
-APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db libatomic1)
+# jq: the Claude status line parses every render with it, and the settings merge
+# below needs it to edit settings.json without clobbering the other keys.
+APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db libatomic1 jq)
 
 # "name|full definition line". Merged in one at a time: an alias already defined
 # in ~/.bash_aliases is left exactly as the device has it, never rewritten.
@@ -74,6 +76,13 @@ INSTRUCTION_FILES=(
     "GEMINI.md|$HOME/.gemini/GEMINI.md"
 )
 
+# The script is overwritten whenever it differs from the tracked copy, like the
+# instruction files; the settings entry is only added when settings.json has no
+# statusLine at all, so a device's own status line is never replaced.
+STATUSLINE_SRC="${SCRIPT_DIR}/claude/statusline-command.sh"
+STATUSLINE_FILE="$HOME/.claude/statusline-command.sh"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/new-device-setup"
 STATE_FILE="${STATE_DIR}/in-progress"
 LOG_FILE="${STATE_DIR}/setup.log"
@@ -83,7 +92,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions aliases project-navigator)
+STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions claude-statusline aliases project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -260,6 +269,26 @@ detect_agent_instructions() {
     return 1
 }
 
+# Grep, not jq: detection runs before the apt step that installs jq.
+SL_NEED_FILE=0
+SL_NEED_SETTING=0
+
+detect_claude_statusline() {
+    SL_NEED_FILE=0; SL_NEED_SETTING=0
+    cmp -s "$STATUSLINE_SRC" "$STATUSLINE_FILE" 2>/dev/null || SL_NEED_FILE=1
+    grep -q '"statusLine"' "$CLAUDE_SETTINGS" 2>/dev/null || SL_NEED_SETTING=1
+
+    if [ "$SL_NEED_FILE" -eq 0 ] && [ "$SL_NEED_SETTING" -eq 0 ]; then
+        DETAIL="script matches, statusLine set"
+        return 0
+    fi
+    local what=""
+    [ "$SL_NEED_FILE" -eq 1 ]    && what+="install/update the script, "
+    [ "$SL_NEED_SETTING" -eq 1 ] && what+="add statusLine to settings.json"
+    DETAIL="will ${what%, }"
+    return 1
+}
+
 # Two independent halves: the file, and ~/.bashrc sourcing it. Either can already
 # be in place on its own, so both are checked and only the missing half is done.
 PN_NEED_FILE=0
@@ -400,6 +429,29 @@ install_agent_instructions() {
             log_ok "installed $filename -> $target"
         fi
     done
+}
+
+install_claude_statusline() {
+    mkdir -p "$(dirname "$STATUSLINE_FILE")"
+    if [ "$SL_NEED_FILE" -eq 1 ]; then
+        backup_once "$STATUSLINE_FILE"
+        install -m 0755 "$STATUSLINE_SRC" "$STATUSLINE_FILE"
+        log_ok "installed statusline-command.sh -> $STATUSLINE_FILE"
+    fi
+    if [ "$SL_NEED_SETTING" -eq 1 ]; then
+        local cmd="bash $STATUSLINE_FILE" tmp
+        tmp="$(mktemp)"
+        if [ -s "$CLAUDE_SETTINGS" ]; then
+            backup_once "$CLAUDE_SETTINGS"
+            jq --arg cmd "$cmd" '.statusLine = {type: "command", command: $cmd, padding: 0}' \
+                "$CLAUDE_SETTINGS" > "$tmp" \
+                || { rm -f "$tmp"; log_error "$CLAUDE_SETTINGS is not valid JSON — left untouched"; return 1; }
+        else
+            jq -n --arg cmd "$cmd" '{statusLine: {type: "command", command: $cmd, padding: 0}}' > "$tmp"
+        fi
+        mv "$tmp" "$CLAUDE_SETTINGS"
+        log_ok "statusLine added to $CLAUDE_SETTINGS"
+    fi
 }
 
 # The upstream registry is example paths, so it is emptied on the way in —
@@ -568,7 +620,8 @@ ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
   sudo apt install -y gh
 
 ${C_BOLD}Config worth copying from the old device:${C_RESET}
-  The shared Claude, Codex, and Antigravity instructions are already installed.
+  The shared Claude, Codex, and Antigravity instructions and the Claude status
+  line are already installed.
   Copy private credentials and remaining tool state separately when needed.
 
 ${C_BOLD}Project navigator:${C_RESET} installed from https://github.com/CGYCGY/shell-utils
@@ -832,6 +885,198 @@ cat > "$AI_DEV_TMP/agent-instructions/GEMINI.md" <<'AI_DEV_PAYLOAD_EOF'
 
 - A comment must carry what the code can't — the non-obvious *why*, an external fact or gotcha, a constraint an edit could break. Cut the rest (narration, banners, JSDoc echoing the signature). Code is LLM-read, so this overrides match-surrounding-style.
 - When delegating, put this in the subagent's spec — don't say "match the existing comment style."
+AI_DEV_PAYLOAD_EOF
+
+cat > "$AI_DEV_TMP/claude/statusline-command.sh" <<'AI_DEV_PAYLOAD_EOF'
+#!/usr/bin/env bash
+# Claude Code statusLine command
+# Format: <model> <effort> | <used>/<total> (<pct%>) | I:<cur>(<total>) O:<cur>(<total>) IC:<cur>(<total>) IW:<cur>(<total>) | $<cost>
+
+input=$(cat)
+
+# --- ANSI color codes ---
+RESET='\033[0m'
+CYAN_BOLD='\033[1;36m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+MAGENTA_BOLD='\033[1;35m'
+RED_BOLD='\033[1;31m'
+DIM_CYAN='\033[2;36m'
+DIM_YELLOW='\033[2;33m'
+DIM_GREEN='\033[2;32m'
+DIM_WHITE='\033[2;37m'
+
+SEP="${DIM_WHITE} | ${RESET}"
+
+# --- Extract fields from JSON ---
+model=$(echo "$input"        | jq -r '.model.display_name // empty')
+effort=$(echo "$input"       | jq -r '.effort.level // empty')
+ctx_size=$(echo "$input"     | jq -r '.context_window.context_window_size // empty')
+used_pct=$(echo "$input"     | jq -r '.context_window.used_percentage // empty')
+cur_usage=$(echo "$input"    | jq -r '.context_window.current_usage // empty')
+total_input=$(echo "$input"  | jq -r '.context_window.total_input_tokens // 0')
+total_output=$(echo "$input" | jq -r '.context_window.total_output_tokens // 0')
+transcript=$(echo "$input"   | jq -r '.transcript_path // empty')
+cost_usd=$(echo "$input"     | jq -r '.cost.total_cost_usd // empty')
+
+input_tokens=0
+output_tokens=0
+cache_read_tokens=0
+cache_write_tokens=0
+
+if [ -n "$cur_usage" ] && [ "$cur_usage" != "null" ]; then
+    input_tokens=$(echo "$input"       | jq -r '.context_window.current_usage.input_tokens // 0')
+    output_tokens=$(echo "$input"      | jq -r '.context_window.current_usage.output_tokens // 0')
+    cache_read_tokens=$(echo "$input"  | jq -r '.context_window.current_usage.cache_read_input_tokens // 0')
+    cache_write_tokens=$(echo "$input" | jq -r '.context_window.current_usage.cache_creation_input_tokens // 0')
+fi
+
+# --- Parse transcript for cumulative IC/IW totals (with delta cache) ---
+# Cache file keyed by transcript path. Stores "size:ic:iw" so subsequent
+# renders only parse newly-appended bytes instead of re-slurping the whole
+# transcript. Self-heals on parse failure or transcript truncation.
+total_ic=0
+total_iw=0
+if [ -n "$transcript" ] && [ -f "$transcript" ]; then
+    # wc/cksum rather than stat -c/md5sum: the same file is installed on macOS,
+    # whose BSD stat takes different flags and which ships no md5sum.
+    current_size=$(wc -c < "$transcript" 2>/dev/null | tr -d ' ' || echo 0)
+    cache_key=$(printf '%s' "$transcript" | cksum | awk '{print $1}')
+    cache_file="/tmp/statusline-cache-${cache_key}"
+
+    cached_size=0
+    cached_ic=0
+    cached_iw=0
+    if [ -f "$cache_file" ]; then
+        IFS=: read -r cached_size cached_ic cached_iw < "$cache_file" || true
+        cached_size=${cached_size:-0}
+        cached_ic=${cached_ic:-0}
+        cached_iw=${cached_iw:-0}
+    fi
+
+    sum_jq='
+        map(select(.message.usage != null) | .message.usage) |
+        {
+            ic: ([.[].cache_read_input_tokens // 0] | add // 0),
+            iw: ([.[].cache_creation_input_tokens // 0] | add // 0)
+        }
+    '
+
+    if [ "$current_size" = "$cached_size" ] && [ "$cached_size" -gt 0 ]; then
+        total_ic=$cached_ic
+        total_iw=$cached_iw
+    else
+        scan_ok=0
+        # Incremental: parse only the new tail bytes
+        if [ "$current_size" -gt "$cached_size" ] && [ "$cached_size" -gt 0 ]; then
+            delta=$((current_size - cached_size))
+            tail_totals=$(head -c "$current_size" "$transcript" 2>/dev/null | tail -c "$delta" | jq -s "$sum_jq" 2>/dev/null)
+            if [ -n "$tail_totals" ]; then
+                new_ic=$(echo "$tail_totals" | jq -r '.ic // 0')
+                new_iw=$(echo "$tail_totals" | jq -r '.iw // 0')
+                total_ic=$((cached_ic + new_ic))
+                total_iw=$((cached_iw + new_iw))
+                scan_ok=1
+            fi
+        fi
+        # Fallback: full rescan (no cache, transcript shrank, or tail parse failed)
+        if [ "$scan_ok" = "0" ]; then
+            full_totals=$(head -c "$current_size" "$transcript" 2>/dev/null | jq -s "$sum_jq" 2>/dev/null)
+            if [ -n "$full_totals" ]; then
+                total_ic=$(echo "$full_totals" | jq -r '.ic // 0')
+                total_iw=$(echo "$full_totals" | jq -r '.iw // 0')
+                scan_ok=1
+            fi
+        fi
+        # Atomic cache write (only on successful scan)
+        if [ "$scan_ok" = "1" ]; then
+            tmp_cache="${cache_file}.tmp.$$"
+            if printf '%s:%s:%s\n' "$current_size" "$total_ic" "$total_iw" > "$tmp_cache" 2>/dev/null; then
+                mv "$tmp_cache" "$cache_file" 2>/dev/null || rm -f "$tmp_cache"
+            fi
+        fi
+    fi
+fi
+
+# --- Helper: abbreviate token number to K/M ---
+fmt_tokens() {
+    local n="$1"
+    if [ -z "$n" ] || [ "$n" = "null" ]; then echo "0"; return; fi
+    awk -v n="$n" 'BEGIN {
+        if (n >= 1000000)   { printf "%.2fM\n", n/1000000 }
+        else if (n >= 1000) { printf "%.2fK\n", n/1000 }
+        else                { printf "%d\n", n }
+    }'
+}
+
+# --- Build output ---
+
+# Model name: bold cyan
+if [ -n "$model" ]; then
+    out="${CYAN_BOLD}${model}${RESET}"
+else
+    out="${CYAN_BOLD}(no model)${RESET}"
+fi
+
+# Effort: small tag after model. Ascending intensity ramp across the
+# Claude Code levels: low < medium < high < xhigh < max, plus the
+# session-only `ultracode` mode (xhigh reasoning + dynamic workflows).
+if [ -n "$effort" ]; then
+    case "$effort" in
+        low)       eff_color="$DIM_WHITE" ;;
+        medium)    eff_color="$GREEN" ;;
+        high)      eff_color="$YELLOW" ;;
+        xhigh)     eff_color="$MAGENTA" ;;
+        max)       eff_color="$RED_BOLD" ;;
+        ultracode) eff_color="$MAGENTA_BOLD" ;;
+        *)         eff_color="$DIM_WHITE" ;;
+    esac
+    out="${out} ${eff_color}${effort}${RESET}"
+fi
+
+# Context: used/total (pct%)  — green, yellow when >75%
+if [ -n "$ctx_size" ] && [ "$ctx_size" != "0" ]; then
+    cur_ctx=$(( input_tokens + cache_read_tokens + cache_write_tokens ))
+    used_fmt=$(fmt_tokens "$cur_ctx")
+    total_fmt=$(fmt_tokens "$ctx_size")
+    ctx_color="$GREEN"
+    if [ -n "$used_pct" ]; then
+        used_int=${used_pct%.*}
+        [ "$used_int" -gt 75 ] 2>/dev/null && ctx_color="$YELLOW"
+        pct_str=" (${used_int}%)"
+    else
+        pct_str=""
+    fi
+    out="${out}${SEP}${ctx_color}${used_fmt}/${total_fmt}${pct_str}${RESET}"
+fi
+
+# Token detail: I O IC IW — each with current(total)
+if [ -n "$cur_usage" ] && [ "$cur_usage" != "null" ]; then
+    i_fmt=$(fmt_tokens  "$input_tokens")
+    it_fmt=$(fmt_tokens "$total_input")
+    o_fmt=$(fmt_tokens  "$output_tokens")
+    ot_fmt=$(fmt_tokens "$total_output")
+    ic_fmt=$(fmt_tokens "$cache_read_tokens")
+    ict_fmt=$(fmt_tokens "$total_ic")
+    iw_fmt=$(fmt_tokens "$cache_write_tokens")
+    iwt_fmt=$(fmt_tokens "$total_iw")
+
+    detail="${BLUE}I:${i_fmt}(${it_fmt})${RESET}"
+    detail="${detail}${DIM_WHITE}, ${RESET}${MAGENTA}O:${o_fmt}(${ot_fmt})${RESET}"
+    detail="${detail}${DIM_WHITE}, ${RESET}\033[0;36mIC:${ic_fmt}(${ict_fmt})${RESET}"
+    detail="${detail}${DIM_WHITE}, ${RESET}${YELLOW}IW:${iw_fmt}(${iwt_fmt})${RESET}"
+    out="${out}${SEP}${detail}"
+fi
+
+# Cost: $X.XX — dim green
+if [ -n "$cost_usd" ] && [ "$cost_usd" != "null" ]; then
+    cost_fmt=$(awk -v c="$cost_usd" 'BEGIN { printf "$%.2f\n", c }')
+    out="${out}${SEP}${DIM_GREEN}${cost_fmt}${RESET}"
+fi
+
+printf '%b\n' "$out"
 AI_DEV_PAYLOAD_EOF
 
 chmod +x "$AI_DEV_TMP/ai-dev-setup.sh"

@@ -56,6 +56,12 @@ agent-browser also downloads Chrome for Testing into `~/.agent-browser` and
 installs the system libraries headless Chrome needs, so the agents can drive a
 browser on a server with no desktop.
 
+It also installs the Claude Code status line from `claude/statusline-command.sh`
+to `~/.claude/statusline-command.sh` (model, effort, context use, token counts
+and cost) and points `statusLine` in `~/.claude/settings.json` at it. The rest of
+`settings.json` is kept, and a `statusLine` the machine already has is never
+replaced.
+
 The source files live under `agent-instructions/`. Existing destination files are backed up with a timestamp before they are replaced, and reruns skip files that already match.
 
 This is the author's toolchain. Edit the `APT_PACKAGES` and `ALIAS_DEFS` arrays near the top of `ai-dev-setup.sh` to customize the packages and aliases.
@@ -65,8 +71,8 @@ The three instruction files intentionally remain separate so each tool can use i
 ## Regenerating the Standalone File
 
 `ai-dev-standalone.sh` is generated. The sources stay the truth:
-`ai-dev-setup.sh`, `project-navigator.sh` and the three files under
-`agent-instructions/`. After editing any of them, rebuild:
+`ai-dev-setup.sh`, `project-navigator.sh`, `claude/statusline-command.sh` and
+the three files under `agent-instructions/`. After editing any of them, rebuild:
 
 ```bash
 ./build-standalone.sh          # regenerate

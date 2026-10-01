@@ -25,6 +25,7 @@ PAYLOAD=(
     agent-instructions/CLAUDE.md
     agent-instructions/AGENTS.md
     agent-instructions/GEMINI.md
+    claude/statusline-command.sh
 )
 
 # A payload line equal to this would close its heredoc early and corrupt the
@@ -63,7 +64,7 @@ set -euo pipefail
 
 AI_DEV_TMP="$(mktemp -d)"
 trap 'rm -rf "$AI_DEV_TMP"' EXIT
-mkdir -p "$AI_DEV_TMP/agent-instructions"
+mkdir -p "$AI_DEV_TMP/agent-instructions" "$AI_DEV_TMP/claude"
 HEADER
 
     local f

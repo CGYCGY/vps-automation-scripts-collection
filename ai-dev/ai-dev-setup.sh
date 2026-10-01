@@ -30,7 +30,9 @@ NVM_VERSION="${NVM_VERSION:-}"         # empty = resolve nvm's latest tag; or "v
 # libatomic1 is not optional: every node build links libatomic.so.1, and minimal
 # images ship without it — nvm unpacks fine and the first npm-based agent then
 # dies on a linker error that names neither node nor the package.
-APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db libatomic1)
+# jq: the Claude status line parses every render with it, and the settings merge
+# below needs it to edit settings.json without clobbering the other keys.
+APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db libatomic1 jq)
 
 # "name|full definition line". Merged in one at a time: an alias already defined
 # in ~/.bash_aliases is left exactly as the device has it, never rewritten.
@@ -58,6 +60,13 @@ INSTRUCTION_FILES=(
     "GEMINI.md|$HOME/.gemini/GEMINI.md"
 )
 
+# The script is overwritten whenever it differs from the tracked copy, like the
+# instruction files; the settings entry is only added when settings.json has no
+# statusLine at all, so a device's own status line is never replaced.
+STATUSLINE_SRC="${SCRIPT_DIR}/claude/statusline-command.sh"
+STATUSLINE_FILE="$HOME/.claude/statusline-command.sh"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
+
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/new-device-setup"
 STATE_FILE="${STATE_DIR}/in-progress"
 LOG_FILE="${STATE_DIR}/setup.log"
@@ -67,7 +76,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions aliases project-navigator)
+STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions claude-statusline aliases project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -244,6 +253,26 @@ detect_agent_instructions() {
     return 1
 }
 
+# Grep, not jq: detection runs before the apt step that installs jq.
+SL_NEED_FILE=0
+SL_NEED_SETTING=0
+
+detect_claude_statusline() {
+    SL_NEED_FILE=0; SL_NEED_SETTING=0
+    cmp -s "$STATUSLINE_SRC" "$STATUSLINE_FILE" 2>/dev/null || SL_NEED_FILE=1
+    grep -q '"statusLine"' "$CLAUDE_SETTINGS" 2>/dev/null || SL_NEED_SETTING=1
+
+    if [ "$SL_NEED_FILE" -eq 0 ] && [ "$SL_NEED_SETTING" -eq 0 ]; then
+        DETAIL="script matches, statusLine set"
+        return 0
+    fi
+    local what=""
+    [ "$SL_NEED_FILE" -eq 1 ]    && what+="install/update the script, "
+    [ "$SL_NEED_SETTING" -eq 1 ] && what+="add statusLine to settings.json"
+    DETAIL="will ${what%, }"
+    return 1
+}
+
 # Two independent halves: the file, and ~/.bashrc sourcing it. Either can already
 # be in place on its own, so both are checked and only the missing half is done.
 PN_NEED_FILE=0
@@ -384,6 +413,29 @@ install_agent_instructions() {
             log_ok "installed $filename -> $target"
         fi
     done
+}
+
+install_claude_statusline() {
+    mkdir -p "$(dirname "$STATUSLINE_FILE")"
+    if [ "$SL_NEED_FILE" -eq 1 ]; then
+        backup_once "$STATUSLINE_FILE"
+        install -m 0755 "$STATUSLINE_SRC" "$STATUSLINE_FILE"
+        log_ok "installed statusline-command.sh -> $STATUSLINE_FILE"
+    fi
+    if [ "$SL_NEED_SETTING" -eq 1 ]; then
+        local cmd="bash $STATUSLINE_FILE" tmp
+        tmp="$(mktemp)"
+        if [ -s "$CLAUDE_SETTINGS" ]; then
+            backup_once "$CLAUDE_SETTINGS"
+            jq --arg cmd "$cmd" '.statusLine = {type: "command", command: $cmd, padding: 0}' \
+                "$CLAUDE_SETTINGS" > "$tmp" \
+                || { rm -f "$tmp"; log_error "$CLAUDE_SETTINGS is not valid JSON — left untouched"; return 1; }
+        else
+            jq -n --arg cmd "$cmd" '{statusLine: {type: "command", command: $cmd, padding: 0}}' > "$tmp"
+        fi
+        mv "$tmp" "$CLAUDE_SETTINGS"
+        log_ok "statusLine added to $CLAUDE_SETTINGS"
+    fi
 }
 
 # The upstream registry is example paths, so it is emptied on the way in —
@@ -552,7 +604,8 @@ ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
   sudo apt install -y gh
 
 ${C_BOLD}Config worth copying from the old device:${C_RESET}
-  The shared Claude, Codex, and Antigravity instructions are already installed.
+  The shared Claude, Codex, and Antigravity instructions and the Claude status
+  line are already installed.
   Copy private credentials and remaining tool state separately when needed.
 
 ${C_BOLD}Project navigator:${C_RESET} installed from https://github.com/CGYCGY/shell-utils

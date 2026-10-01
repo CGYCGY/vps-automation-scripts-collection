@@ -16,6 +16,7 @@
 #   ./ai-dev-setup-macos.sh --status            survey only, change nothing
 #   ./ai-dev-setup-macos.sh --force             reinstall everything, ignoring detection
 #   ./ai-dev-setup-macos.sh --with-instructions also deploy ../agent-instructions
+#                                               and the Claude status line
 #   ./ai-dev-setup-macos.sh --reset             discard a crashed run's saved progress
 #
 # Versions float to latest by default. Pin by editing the two lines below, or
@@ -60,6 +61,13 @@ INSTRUCTION_FILES=(
     "AGENTS.md|$HOME/.codex/AGENTS.md"
     "GEMINI.md|$HOME/.gemini/GEMINI.md"
 )
+
+# Shared with the Linux script, and gated with the instructions since both need
+# a checkout. The script is overwritten whenever it differs from the tracked
+# copy; the settings entry is only added when settings.json has no statusLine.
+STATUSLINE_SRC="${SCRIPT_DIR}/../claude/statusline-command.sh"
+STATUSLINE_FILE="$HOME/.claude/statusline-command.sh"
+CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/new-device-setup"
 STATE_FILE="${STATE_DIR}/in-progress"
@@ -285,6 +293,30 @@ detect_agent_instructions() {
     return 1
 }
 
+# Grep, not jq: jq may not be installed until this step runs.
+SL_NEED_FILE=0
+SL_NEED_SETTING=0
+
+detect_claude_statusline() {
+    if [ ! -f "$STATUSLINE_SRC" ]; then
+        DETAIL="no ../claude/statusline-command.sh beside this script — run from a checkout"
+        return 0
+    fi
+    SL_NEED_FILE=0; SL_NEED_SETTING=0
+    cmp -s "$STATUSLINE_SRC" "$STATUSLINE_FILE" 2>/dev/null || SL_NEED_FILE=1
+    grep -q '"statusLine"' "$CLAUDE_SETTINGS" 2>/dev/null || SL_NEED_SETTING=1
+
+    if [ "$SL_NEED_FILE" -eq 0 ] && [ "$SL_NEED_SETTING" -eq 0 ]; then
+        DETAIL="script matches, statusLine set"
+        return 0
+    fi
+    local what=""
+    [ "$SL_NEED_FILE" -eq 1 ]    && what+="install/update the script, "
+    [ "$SL_NEED_SETTING" -eq 1 ] && what+="add statusLine to settings.json"
+    DETAIL="will ${what%, }"
+    return 1
+}
+
 # Two independent halves: the file, and ~/.zshrc sourcing it. Either can already
 # be in place on its own, so both are checked and only the missing half is done.
 PN_NEED_FILE=0
@@ -435,6 +467,34 @@ install_agent_instructions() {
             log_ok "installed $filename -> $target"
         fi
     done
+}
+
+# macOS 15 ships /usr/bin/jq; older releases do not, and the status line runs
+# jq on every render, so brew fills the gap.
+install_claude_statusline() {
+    if ! have jq; then
+        load_brew && brew install jq
+    fi
+    mkdir -p "$(dirname "$STATUSLINE_FILE")"
+    if [ "$SL_NEED_FILE" -eq 1 ]; then
+        backup_once "$STATUSLINE_FILE"
+        install -m 0755 "$STATUSLINE_SRC" "$STATUSLINE_FILE"
+        log_ok "installed statusline-command.sh -> $STATUSLINE_FILE"
+    fi
+    if [ "$SL_NEED_SETTING" -eq 1 ]; then
+        local cmd="bash $STATUSLINE_FILE" tmp
+        tmp="$(mktemp)"
+        if [ -s "$CLAUDE_SETTINGS" ]; then
+            backup_once "$CLAUDE_SETTINGS"
+            jq --arg cmd "$cmd" '.statusLine = {type: "command", command: $cmd, padding: 0}' \
+                "$CLAUDE_SETTINGS" > "$tmp" \
+                || { rm -f "$tmp"; log_error "$CLAUDE_SETTINGS is not valid JSON — left untouched"; return 1; }
+        else
+            jq -n --arg cmd "$cmd" '{statusLine: {type: "command", command: $cmd, padding: 0}}' > "$tmp"
+        fi
+        mv "$tmp" "$CLAUDE_SETTINGS"
+        log_ok "statusLine added to $CLAUDE_SETTINGS"
+    fi
 }
 
 # The upstream registry is example paths, so it is emptied on the way in —
@@ -638,7 +698,7 @@ if [ "$(id -u)" -eq 0 ]; then
     exit 1
 fi
 
-[ "$OPT_INSTRUCTIONS" -eq 1 ] && STEPS+=(agent-instructions)
+[ "$OPT_INSTRUCTIONS" -eq 1 ] && STEPS+=(agent-instructions claude-statusline)
 
 mkdir -p "$STATE_DIR"
 

@@ -66,8 +66,10 @@ the `node` step guarantees.
   and `agy install` would add a duplicate PATH line to `~/.zprofile`.
 - `agent-browser install` runs without `--with-deps`, since macOS needs no extra
   system libraries.
-- Agent instructions (`../agent-instructions`) are **not** deployed unless you
-  pass `--with-instructions`.
+- Agent instructions (`../agent-instructions`) and the Claude status line
+  (`../claude/statusline-command.sh`) are **not** deployed unless you pass
+  `--with-instructions`. `jq`, which the status line needs, is installed with
+  brew when the Mac lacks it.
 - `cdp` registers its tab completion with `compdef`, so `compinit` is added
   only when `~/.zshrc` and oh-my-zsh do not already load it.
 
@@ -79,7 +81,7 @@ the `node` step guarantees.
 | `--upgrade` | Also run `brew update && brew upgrade` |
 | `--status` | Survey the machine without changing anything |
 | `--force` | Reinstall everything, ignoring detection |
-| `--with-instructions` | Also deploy `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` (needs a checkout) |
+| `--with-instructions` | Also deploy `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` and the Claude status line (needs a checkout) |
 | `--reset` | Discard saved progress from an interrupted run |
 
 `NODE_VERSION` and `NVM_VERSION` work the same way as in the Linux script.

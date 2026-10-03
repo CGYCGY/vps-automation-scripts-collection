@@ -45,9 +45,12 @@ as the Tailscale login. `-y` takes the default answer for every question.
 ```bash
 ./workstation/setup.sh              # Detects Linux or macOS and runs the matching setup
 ./workstation/setup.sh --status     # Survey the machine without changing anything
+./workstation/setup.sh -y           # Take the default for every question
 ```
 
-Every flag is forwarded to the AI dev setup; see [its README](workstation/shared/ai-dev/README.md#options).
+On a Mac this runs the [macOS workstation setup](workstation/macos/README.md).
+On Linux it runs the [AI dev setup](workstation/shared/ai-dev/README.md#options),
+and every flag is passed through to it.
 
 ## Available Scripts
 
@@ -59,6 +62,7 @@ Every flag is forwarded to the AI dev setup; see [its README](workstation/shared
 | Server | **PostgreSQL Manager** | Manage databases, users, and permissions | [server/postgres/README.md](server/postgres/README.md) |
 | Shared (Linux) | **Tailscale SSH** | Secure the machine with Tailscale SSH - no more SSH keys | [shared/linux/tailscale/README.md](shared/linux/tailscale/README.md) |
 | Shared (Linux) | **Swap Config** | RAM-based optimized swap settings | [shared/linux/swap/README.md](shared/linux/swap/README.md) |
+| Workstation | **Mac Setup** | Homebrew apps, Tailscale SSH, power, Finder, git and GitHub key, plus the AI dev toolchain | [workstation/macos/README.md](workstation/macos/README.md) |
 | Workstation | **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available; [macOS version](workstation/shared/ai-dev/macos/README.md)) | [workstation/shared/ai-dev/README.md](workstation/shared/ai-dev/README.md) |
 
 ## Supported Systems
@@ -105,7 +109,9 @@ Secures remote access with Tailscale, then installs the AI development toolchain
 ```bash
 ./workstation/setup.sh
 ```
-Installs Homebrew and the AI development toolchain.
+Asks for sudo once and asks every question first. Then it installs Homebrew, the
+apps, Tailscale SSH and the AI development toolchain. It finishes with the steps
+that need you: the Tailscale login and the GitHub key.
 
 ## Directory Structure
 
@@ -127,6 +133,9 @@ Installs Homebrew and the AI development toolchain.
 │       └── README.md
 ├── workstation/                # Machines used for work
 │   ├── setup.sh                # Detects Linux or macOS
+│   ├── macos/                  # Mac modules: homebrew, apps, tailscale, power, ssh, ...
+│   │   ├── macos-lib.sh        # macOS helpers on top of setup-lib.sh
+│   │   └── README.md
 │   └── shared/                 # Used by both Linux and macOS workstations
 │       └── ai-dev/
 │           ├── ai-dev-setup.sh       # Linux AI development toolchain setup

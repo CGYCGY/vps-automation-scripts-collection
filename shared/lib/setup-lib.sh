@@ -8,6 +8,7 @@
 #   auto         changes that need no input
 #   interactive  steps that need the user (browser login, typing a password)
 #   summary      what to do next; nothing changes
+# plus `status`, run alone by --status: report what is in place, change nothing.
 #
 # A menu that runs several modules calls each with `--phase <name>`, one phase
 # at a time across all modules, so every question comes first and every
@@ -36,6 +37,20 @@ die() { log_error "$*"; exit 1; }
 require_root() {
     [ "$(id -u)" -eq 0 ] || die "run this with sudo"
 }
+
+require_user() {
+    [ "$(id -u)" -ne 0 ] || die "run this as your normal user, not with sudo"
+}
+
+# Asks for the password once, then keeps sudo's timestamp fresh until this
+# shell exits, so no step stops halfway to ask again.
+sudo_keepalive() {
+    sudo -v || die "sudo is needed"
+    ( while kill -0 "$$" 2>/dev/null; do sudo -n true; sleep 50; done ) >/dev/null 2>&1 &
+}
+
+# status_row NAME STATE DETAIL, for module_status
+status_row() { printf '  %-18s %-9s %s\n' "$1" "$2" "$3"; }
 
 # The human behind sudo, for things like their password or home directory.
 invoking_user() { echo "${SUDO_USER:-$(id -un)}"; }
@@ -177,13 +192,14 @@ _run_phase() {
     fi
 }
 
-# module_main [--phase plan|deps|auto|interactive|summary] [-y]
+# module_main [--phase plan|deps|auto|interactive|summary|status] [--status] [-y]
 # With no --phase, runs every phase itself, for running one module alone.
 module_main() {
     local phase=all
     while [ $# -gt 0 ]; do
         case "$1" in
             --phase) phase="$2"; shift ;;
+            --status) phase=status ;;
             -y|--yes) ASSUME_YES=1; export ASSUME_YES ;;
             -h|--help)
                 if [ "$(type -t module_help 2>/dev/null)" = function ]; then
@@ -209,7 +225,7 @@ module_main() {
             done
             print_notes
             ;;
-        plan|deps|auto|interactive|summary) _run_phase "$phase" ;;
+        plan|deps|auto|interactive|summary|status) _run_phase "$phase" ;;
         *) die "unknown phase: $phase" ;;
     esac
 }
@@ -238,6 +254,17 @@ run_modules() {
     done
     print_notes
     _clear_state
+}
+
+# status_modules MODULE_PATH...: the read-only survey behind --status.
+status_modules() {
+    local m
+    status_row COMPONENT STATUS DETAIL
+    for m in "$@"; do
+        bash "$m" --phase status
+    done
+    echo
+    echo "--status: nothing was changed."
 }
 
 _clear_state() {

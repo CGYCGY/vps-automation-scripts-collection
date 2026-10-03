@@ -45,7 +45,7 @@ invoking_user() { echo "${SUDO_USER:-$(id -un)}"; }
 SETUP_STATE="${SETUP_STATE:-}"
 if [ -z "$SETUP_STATE" ]; then
     SETUP_STATE="$(mktemp "${TMPDIR:-/tmp}/setup-state.XXXXXX")"
-    SETUP_STATE_OWNED=1
+    trap 'rm -f "$SETUP_STATE" "${SETUP_STATE}.notes"' EXIT
 fi
 export SETUP_STATE
 # shellcheck disable=SC1090
@@ -201,34 +201,46 @@ module_main() {
     case "$phase" in
         all)
             local p
-            for p in plan deps auto interactive summary; do
+            _run_phase plan
+            ask_yn SETUP_GO "Questions done. Start the setup?" y
+            [ "$SETUP_GO" = yes ] || { log_warn "Nothing was changed."; return 0; }
+            for p in deps auto interactive summary; do
                 _run_phase "$p"
             done
             print_notes
-            if [ -n "${SETUP_STATE_OWNED:-}" ]; then
-                rm -f "$SETUP_STATE" "${SETUP_STATE}.notes"
-            fi
             ;;
         plan|deps|auto|interactive|summary) _run_phase "$phase" ;;
         *) die "unknown phase: $phase" ;;
     esac
 }
 
-# run_modules MODULE_PATH... : the menu side. One state file for the whole run,
-# every module through each phase before the next phase starts.
+# run_modules MODULE_PATH... : the menu side. Every module goes through each
+# phase before the next phase starts. Answers the menu already gave (with ask*)
+# are in the same state file, so modules don't ask them again.
 run_modules() {
     local p m
-    SETUP_STATE="$(mktemp "${TMPDIR:-/tmp}/setup-state.XXXXXX")"
-    export SETUP_STATE
     for p in plan deps auto interactive summary; do
+        if [ "$p" = deps ]; then
+            ask_yn SETUP_GO "Questions done. Start the setup?" y
+            if [ "$SETUP_GO" != yes ]; then
+                log_warn "Nothing was changed."
+                _clear_state
+                return 0
+            fi
+        fi
         for m in "$@"; do
             bash "$m" --phase "$p" || {
                 log_error "$(basename "$m") failed during the $p phase"
-                rm -f "$SETUP_STATE" "${SETUP_STATE}.notes"
+                _clear_state
                 return 1
             }
         done
     done
     print_notes
+    _clear_state
+}
+
+_clear_state() {
     rm -f "$SETUP_STATE" "${SETUP_STATE}.notes"
+    unset SETUP_GO
 }

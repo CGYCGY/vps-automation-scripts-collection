@@ -25,15 +25,20 @@ the same as `sudo ./server/setup.sh --full`.
 ### Server Options
 
 ```bash
-sudo ./server/setup.sh --full       # Full server setup (swap + tailscale + coolify)
-sudo ./server/setup.sh --tailscale  # Tailscale SSH setup only
-sudo ./server/setup.sh --coolify    # Coolify installation only
-sudo ./server/setup.sh --swap       # Swap configuration only
-./server/setup.sh --minio           # MinIO migration tool
-./server/setup.sh --minio-users     # MinIO user & bucket manager
-./server/setup.sh --postgres        # PostgreSQL manager
-sudo ./server/setup.sh --help       # Show all options
+sudo ./server/setup.sh --full            # Swap + Tailscale SSH + Coolify in one run
+sudo ./server/setup.sh --tailscale       # Tailscale SSH and firewall only
+sudo ./server/setup.sh --coolify         # Coolify only (asks: dashboard or managed server)
+sudo ./server/setup.sh --coolify-remote  # Coolify as a managed server
+sudo ./server/setup.sh --swap            # Swap only
+./server/setup.sh --minio                # MinIO migration tool
+./server/setup.sh --minio-users          # MinIO user & bucket manager
+./server/setup.sh --postgres             # PostgreSQL manager
+sudo ./server/setup.sh --help            # Show all options
 ```
+
+Every setup runs in the same order: sudo first, then all of its questions, then
+installs and changes that need no input, and last the steps that need you, such
+as the Tailscale login. `-y` takes the default answer for every question.
 
 ### Workstation Options
 
@@ -69,7 +74,7 @@ Every flag is forwarded to the AI dev setup; see [its README](workstation/shared
 ```bash
 sudo ./server/setup.sh --full
 ```
-This runs swap configuration, Tailscale SSH setup, and Coolify installation in sequence.
+Asks whether this is the Coolify dashboard or a managed server, then sets up swap, Tailscale SSH with the matching tags, and Coolify.
 
 ### Secure Existing Server
 ```bash

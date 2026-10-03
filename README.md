@@ -67,7 +67,7 @@ and every flag is passed through to it.
 
 ## Supported Systems
 
-- **Server OS**: Ubuntu 22.04, 24.04 LTS / Debian 11, 12
+- **Server OS**: Ubuntu 22.04, 24.04 LTS / Debian 11, 12, 13
 - **Workstation OS**: the same Linux releases, or macOS
 - **Architectures**: ARM64 (aarch64), x86_64 (amd64)
 - **Providers**: Oracle Cloud, DigitalOcean, Linode, Vultr, Hetzner, Contabo, OVH, and most VPS providers
@@ -121,8 +121,7 @@ that need you: the Tailscale login and the GitHub key.
 ├── server/                     # Linux VPS hosting Coolify
 │   ├── setup.sh                # Server menu
 │   ├── coolify/
-│   │   ├── coolify-setup.sh         # Coolify dashboard installation
-│   │   ├── coolify-remote-setup.sh  # Prepare a server for an existing dashboard
+│   │   ├── coolify-setup.sh         # Dashboard install or managed-server prep, by role
 │   │   └── README.md
 │   ├── minio/
 │   │   ├── minio_migration.sh          # MinIO migration tool

@@ -154,7 +154,7 @@ module_auto() {
 setup_ghcr() {
     log_step "Coolify: GitHub Container Registry"
     if [ -z "${GHCR_TOKEN:-}" ]; then
-        if [ ! -r /dev/tty ]; then
+        if ! _have_tty; then
             log_warn "No terminal to ask for the GitHub token; skipped"
             note "- ghcr.io login skipped. Re-run with GHCR_TOKEN set, or from a terminal."
             return 0
@@ -195,7 +195,7 @@ read_pem() {
         cp "$src" "$dest"
         return 0
     fi
-    [ -r /dev/tty ] || return 1
+    _have_tty || return 1
     echo "Paste the $label (including the BEGIN/END lines), then press Ctrl+D:" > /dev/tty
     cat < /dev/tty > "$dest"
     [ -s "$dest" ]
@@ -286,7 +286,7 @@ module_summary() {
         note "- The dashboard gets in through the tag:coolify → tag:vps rule for user $COOLIFY_USER. See $POLICY_GUIDE."
     else
         note "- Open the dashboard over your tailnet: http://$name:8000, and create the admin account right away."
-        note "- Tag this machine tag:vps and tag:coolify, but only once the policy has the tag:coolify rule, or Coolify loses its servers. See $POLICY_GUIDE."
+        note "- This machine needs tag:vps and tag:coolify, and the policy needs the tag:coolify rule before them, or Coolify loses its servers. See $POLICY_GUIDE."
     fi
 }
 

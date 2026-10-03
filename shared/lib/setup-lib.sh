@@ -74,15 +74,24 @@ remember() {
 }
 
 # Prompts go to /dev/tty so a module still asks when its stdout is piped.
+# A failed read (no terminal after all) returns 1 so callers stop asking.
 _read_tty() {
-    if [ -r /dev/tty ]; then
-        IFS= read -r REPLY < /dev/tty
-    else
-        REPLY=""
-    fi
+    REPLY=""
+    IFS= read -r REPLY < /dev/tty 2>/dev/null
 }
 
-_can_prompt() { [ -z "${ASSUME_YES:-}" ] && [ -r /dev/tty ]; }
+# /dev/tty exists and passes -r even without a controlling terminal (ssh host
+# cmd, cron); only opening it tells.
+_have_tty() { ( : < /dev/tty ) 2>/dev/null; }
+
+# True when the question should be put to the user. Without -y and without a
+# terminal, stop rather than guess: `ssh host sudo ./setup.sh` must not run
+# a whole setup on defaults nobody saw.
+_can_prompt() {
+    [ -n "${ASSUME_YES:-}" ] && return 1
+    _have_tty && return 0
+    die "no terminal to ask \"$1\"; re-run in a terminal, with -y for the defaults, or set the answer as an environment variable"
+}
 
 # ask VAR "question" [default]: free text. Skipped when VAR is already set,
 # from the environment or an earlier module.
@@ -90,13 +99,13 @@ ask() {
     local var="$1" question="$2" default="${3:-}" current
     eval "current=\${$var+set}"
     [ -n "$current" ] && return 0
-    if _can_prompt; then
+    if _can_prompt "$question"; then
         if [ -n "$default" ]; then
             printf '%s [%s]: ' "$question" "$default" > /dev/tty
         else
             printf '%s: ' "$question" > /dev/tty
         fi
-        _read_tty
+        _read_tty || true
         [ -z "$REPLY" ] && REPLY="$default"
     else
         REPLY="$default"
@@ -112,10 +121,10 @@ ask_yn() {
     [ -n "$current" ] && return 0
     if [ "$default" = y ]; then hint="Y/n"; else hint="y/N"; fi
     REPLY=""
-    if _can_prompt; then
+    if _can_prompt "$question"; then
         while :; do
             printf '%s [%s]: ' "$question" "$hint" > /dev/tty
-            _read_tty
+            _read_tty || { REPLY=""; break; }
             case "$REPLY" in
                 [Yy]|[Yy][Ee][Ss]) REPLY=yes; break ;;
                 [Nn]|[Nn][Oo])     REPLY=no; break ;;
@@ -137,7 +146,7 @@ ask_choice() {
     eval "current=\${$var+set}"
     [ -n "$current" ] && return 0
     REPLY="$default"
-    if _can_prompt; then
+    if _can_prompt "$question"; then
         echo "$question" > /dev/tty
         i=1
         for opt in "$@"; do
@@ -146,7 +155,7 @@ ask_choice() {
         done
         while :; do
             printf 'Select [1-%d]: ' "$#" > /dev/tty
-            _read_tty
+            _read_tty || REPLY=""
             if [ -z "$REPLY" ]; then REPLY="$default"; break; fi
             case "$REPLY" in *[!0-9]*) continue ;; esac
             if [ "$REPLY" -ge 1 ] && [ "$REPLY" -le "$#" ]; then

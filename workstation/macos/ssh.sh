@@ -72,7 +72,7 @@ create_github_key() {
     echo
     log_info "Copied to the clipboard. Add it at https://github.com/settings/ssh/new"
     printf 'Press Enter once it is added... ' > /dev/tty
-    _read_tty
+    _read_tty || true
     # GitHub answers a working key with exit status 1 and a greeting.
     if ssh -o StrictHostKeyChecking=accept-new -T git@github.com 2>&1 | grep -q "successfully authenticated"; then
         log_ok "GitHub accepts the key"

@@ -22,10 +22,12 @@ It is also run by `sudo ./server/setup.sh --tailscale` and `--full`.
 | plan | Asks the machine's role, which ports to open, and whether to set a console password |
 | deps | Installs curl, ufw, jq and Tailscale |
 | auto | Writes the UFW rules, without turning UFW on yet |
-| interactive | Logs in with Tailscale SSH and the role's tags, sets the console password, then turns UFW on and SSH password login off |
+| interactive | Logs in with Tailscale SSH and the role's tags, sets the console password, asks you to confirm `ssh user@host` works over the tailnet, then turns UFW on and SSH password login off |
 
-The lockdown only happens once Tailscale is connected, so a failed login can't
-lock you out.
+The lockdown only happens once Tailscale is connected **and** you've confirmed
+from another device that Tailscale SSH gets you in. Otherwise it is skipped, and
+a re-run finishes it. On a machine where UFW is already active, its rules only
+change at that point too.
 
 ### Roles
 
@@ -52,7 +54,7 @@ editing `sshd_config` itself has no effect.
 Every question can be answered up front, and `-y` takes the defaults for the rest:
 
 ```bash
-sudo MACHINE_ROLE=managed TS_TAILNET_PORTS="5432" ./tailscale-setup.sh -y
+sudo MACHINE_ROLE=managed TS_TAILNET_PORTS="5432" TS_ACCESS_OK=yes ./tailscale-setup.sh -y
 ```
 
 | Variable | Values |
@@ -64,6 +66,7 @@ sudo MACHINE_ROLE=managed TS_TAILNET_PORTS="5432" ./tailscale-setup.sh -y
 | `TS_UFW_RESET` | `yes` / `no`: drop existing UFW rules first |
 | `TS_SET_PASSWORD` | `yes` / `no`: set a password for the provider's console |
 | `TS_AUTHKEY` | log in with an auth key instead of the browser |
+| `TS_ACCESS_OK` | `yes`: you've checked Tailscale SSH works, so lock SSH down. With `-y` and without this, SSH is left open |
 
 ## Docker Bypasses UFW
 

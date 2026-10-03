@@ -5,6 +5,9 @@ Setup and management scripts for two kinds of machines:
 - **Server**: a Linux VPS hosting [Coolify](https://coolify.io), either the dashboard or a server it manages.
 - **Workstation**: a machine used for work, Linux or macOS, set up as an AI coding-agent box.
 
+Everything is reached through Tailscale SSH. Set up your tailnet policy first:
+see the [tailnet guide](docs/tailscale-tailnet.md).
+
 ## Quick Start
 
 ```bash
@@ -128,6 +131,8 @@ Installs Homebrew and the AI development toolchain.
 │           ├── claude/               # Claude Code status line
 │           ├── macos/                # macOS (Homebrew + zsh) version
 │           └── README.md
+├── docs/
+│   └── tailscale-tailnet.md    # Tailnet tags and SSH policy
 └── shared/
     └── linux/                  # Used by both servers and Linux workstations
         ├── swap/

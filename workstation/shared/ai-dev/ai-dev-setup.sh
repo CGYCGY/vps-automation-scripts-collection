@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Bootstraps a Mac with the AI coding-agent toolchain — the macOS counterpart of
-# ../ai-dev-setup.sh. Homebrew instead of apt, zsh (~/.zshrc) instead of bash.
+# Bootstraps a VPS or local box with the AI coding-agent toolchain.
 #
 # Detection-driven: a preflight pass surveys the machine, prints what is already
 # present and what it will install, and only then acts. Re-running on a finished
@@ -10,32 +9,33 @@
 # This script only ever INSTALLS what is missing; it never updates what is
 # already there. Updating is `upd`'s job.
 #
-#   ./ai-dev-setup-macos.sh                     survey, show the plan, ask, then install
-#   ./ai-dev-setup-macos.sh -y                  same, without the confirmation prompt
-#   ./ai-dev-setup-macos.sh --upgrade           also run brew update && brew upgrade
-#   ./ai-dev-setup-macos.sh --status            survey only, change nothing
-#   ./ai-dev-setup-macos.sh --force             reinstall everything, ignoring detection
-#   ./ai-dev-setup-macos.sh --reset             discard a crashed run's saved progress
+#   ./ai-dev-setup.sh             survey, show the plan, ask, then install
+#   ./ai-dev-setup.sh -y          same, without the confirmation prompt
+#   ./ai-dev-setup.sh --upgrade   also run a full apt dist-upgrade
+#   ./ai-dev-setup.sh --status    survey only, change nothing
+#   ./ai-dev-setup.sh --force     reinstall everything, ignoring detection
+#   ./ai-dev-setup.sh --reset     discard a crashed run's saved progress
 #
 # Versions float to latest by default. Pin by editing the two lines below, or
-# per-run:  NODE_VERSION=25.2.1 NVM_VERSION=v0.40.7 ./ai-dev-setup-macos.sh
-#
-# Written for the bash 3.2 that macOS ships: no associative arrays, and no
-# `set -u`, because 3.2 treats "${empty_array[@]}" as an unbound variable.
+# per-run:  NODE_VERSION=25.2.1 NVM_VERSION=v0.40.7 ./ai-dev-setup.sh
 
-set -eo pipefail
+set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
-INSTRUCTIONS_DIR="${SCRIPT_DIR}/../agent-instructions"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+INSTRUCTIONS_DIR="${SCRIPT_DIR}/agent-instructions"
 
 NODE_VERSION="${NODE_VERSION:-node}"   # "node" = latest release; or "24", "25.2.1", "--lts"
 NVM_VERSION="${NVM_VERSION:-}"         # empty = resolve nvm's latest tag; or "v0.40.7"
 
-ZSHRC="$HOME/.zshrc"
-ZPROFILE="$HOME/.zprofile"
+# libatomic1 is not optional: every node build links libatomic.so.1, and minimal
+# images ship without it — nvm unpacks fine and the first npm-based agent then
+# dies on a linker error that names neither node nor the package.
+# jq: the Claude status line parses every render with it, and the settings merge
+# below needs it to edit settings.json without clobbering the other keys.
+APT_PACKAGES=(ca-certificates curl gnupg lsb-release git unzip man-db libatomic1 jq)
 
 # "name|full definition line". Merged in one at a time: an alias already defined
-# in ~/.zshrc is left exactly as the device has it, never rewritten.
+# in ~/.bash_aliases is left exactly as the device has it, never rewritten.
 ALIAS_DEFS=(
     'cc|alias cc="claude --dangerously-skip-permissions"'
     'aa|alias aa="agy --dangerously-skip-permissions"'
@@ -44,44 +44,39 @@ ALIAS_DEFS=(
     'dc|alias dc="docker compose"'
     'jj|alias jj="just"'
 )
+# Project navigation (cdp) is maintained in CGYCGY/shell-utils. Upstream is
+# fetched first so a new box gets the current version; the copy beside this
+# script is the offline fallback. Refresh it now and then:
+#   curl -fsSL $PN_URL -o workstation/shared/ai-dev/project-navigator.sh
+PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh"
+PN_FALLBACK="${SCRIPT_DIR}/project-navigator.sh"
+PN_FILE="$HOME/.project-navigator.sh"
 
-# Project navigation (cdp) is maintained in CGYCGY/shell-utils; macOS gets the
-# zsh edition. Upstream is fetched first so a new Mac gets the current version;
-# the copy beside this script is the offline fallback. Refresh it now and then:
-#   curl -fsSL $PN_URL -o ai-dev/macos/project-navigator.zsh
-PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/zsh/profile-scripts/project-navigator.zsh"
-PN_FALLBACK="${SCRIPT_DIR}/project-navigator.zsh"
-PN_FILE="$HOME/.zsh/project-navigator.zsh"
-
-# Shared with the Linux script.
+# "repository filename|user destination". These stay as separate files because
+# each agent needs a different model identifier and may gain tool-specific rules.
 INSTRUCTION_FILES=(
     "CLAUDE.md|$HOME/.claude/CLAUDE.md"
     "AGENTS.md|$HOME/.codex/AGENTS.md"
     "GEMINI.md|$HOME/.gemini/GEMINI.md"
 )
 
-# Shared with the Linux script. The script is overwritten whenever it differs
-# from the tracked copy; the settings entry is only added when settings.json has
-# no statusLine at all, so a device's own status line is never replaced.
-STATUSLINE_SRC="${SCRIPT_DIR}/../claude/statusline-command.sh"
+# The script is overwritten whenever it differs from the tracked copy, like the
+# instruction files; the settings entry is only added when settings.json has no
+# statusLine at all, so a device's own status line is never replaced.
+STATUSLINE_SRC="${SCRIPT_DIR}/claude/statusline-command.sh"
 STATUSLINE_FILE="$HOME/.claude/statusline-command.sh"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
-
-# Both of the above read files that sit beside this script in a checkout or in
-# the standalone bundle. A lone copy of this script has neither, and the survey
-# says so rather than reporting the step as done.
-NO_SOURCES="source files missing — run ai-dev-setup-macos-standalone.sh or a checkout"
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/new-device-setup"
 STATE_FILE="${STATE_DIR}/in-progress"
 LOG_FILE="${STATE_DIR}/setup.log"
 
-# Guards the blocks appended to ~/.zshrc, so the script cannot duplicate them
-# even if its saved progress is lost.
+# Guards the blocks appended to ~/.bashrc and ~/.bash_aliases, so the script
+# cannot duplicate them even if its saved progress is lost.
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(homebrew nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions claude-statusline aliases project-navigator)
+STEPS=(apt-packages nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions claude-statusline aliases project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -112,53 +107,16 @@ backup_once() {
     log_warn "backed up $(basename "$f") -> $(basename "$b")"
 }
 
-# Vendor installers are saved to a file before running, never piped: macOS
-# curl (LibreSSL) drops connections now and then, and a pipe would hand the
-# shell a truncated script instead of failing.
-fetch() {
-    curl -fsSL --retry 3 --retry-delay 2 "$1" -o "$2"
-}
-
-run_installer() {
-    local url="$1" shell="$2" tmp rc=0
-    tmp="$(mktemp)"
-    fetch "$url" "$tmp" || { rm -f "$tmp"; return 1; }
-    "$shell" "$tmp" || rc=$?
-    rm -f "$tmp"
-    return "$rc"
-}
-
-load_brew() {
-    local b
-    for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do
-        if [ -x "$b" ]; then eval "$("$b" shellenv)"; return 0; fi
-    done
-    return 1
-}
-
+# nvm's scripts trip `set -u`, so every load is fenced.
 load_nvm() {
     export NVM_DIR="$HOME/.nvm"
+    set +u
     # shellcheck disable=SC1091
     [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
-    return 0
+    set -u
 }
 
-# macOS has no timeout(1); perl ships with the OS and alarm() does the job.
-with_timeout() {
-    local secs="$1"; shift
-    perl -e 'alarm shift; exec @ARGV or exit 127' "$secs" "$@"
-}
-
-# macOS has no setsid(1) either. Forks, detaches the child into a new session —
-# so it has no controlling terminal and /dev/tty cannot be opened — and waits.
-without_tty() {
-    perl -MPOSIX -e '
-        my $pid = fork; die "fork: $!" unless defined $pid;
-        if ($pid) { waitpid($pid, 0); exit($? >> 8) }
-        POSIX::setsid(); exec @ARGV or die "exec: $!"' "$@"
-}
-
-tool_version() { with_timeout 10 "$1" --version 2>/dev/null | head -1 | tr -d '\r'; }
+tool_version() { timeout 10 "$1" --version 2>/dev/null | head -1 | tr -d '\r'; }
 
 #############################################
 # DETECTION
@@ -167,17 +125,20 @@ tool_version() { with_timeout 10 "$1" --version 2>/dev/null | head -1 | tr -d '\
 #############################################
 
 DETAIL=""
+MISSING_PKGS=()
 MISSING_ALIASES=()
 
-# Homebrew's installer also installs the Xcode Command Line Tools (git, make,
-# compilers) when they are missing, so the two are one step.
-detect_homebrew() {
-    if load_brew; then
-        DETAIL="$(brew --version 2>/dev/null | head -1)"
-        xcode-select -p >/dev/null 2>&1 || { DETAIL="${DETAIL}, no Command Line Tools"; return 1; }
+detect_apt_packages() {
+    MISSING_PKGS=()
+    local p
+    for p in "${APT_PACKAGES[@]}"; do
+        dpkg -s "$p" >/dev/null 2>&1 || MISSING_PKGS+=("$p")
+    done
+    if [ ${#MISSING_PKGS[@]} -eq 0 ]; then
+        DETAIL="all ${#APT_PACKAGES[@]} present"
         return 0
     fi
-    DETAIL="will install Homebrew (+ Command Line Tools)"
+    DETAIL="missing: ${MISSING_PKGS[*]}"
     return 1
 }
 
@@ -196,33 +157,33 @@ detect_node() {
         DETAIL="$(node --version 2>/dev/null)"
         return 0
     fi
-    DETAIL="will install ${NODE_VERSION} via nvm"
+    DETAIL="will install ${NODE_VERSION}"
     return 1
 }
 
 detect_bun() {
-    if have bun; then
-        DETAIL="$(bun --version 2>/dev/null)"
+    if [ -x "$HOME/.bun/bin/bun" ]; then
+        DETAIL="$("$HOME/.bun/bin/bun" --version 2>/dev/null)"
         return 0
     fi
-    DETAIL="will brew install bun"
+    DETAIL="will install latest"
     return 1
 }
 
-# Also accepts a hand-configured ~/.zshrc: what matters is that the three paths
+# Also accepts a hand-configured ~/.bashrc: what matters is that the three paths
 # are exported, not that this script was the one to write them.
 detect_shell_path() {
-    if grep -qF "$MARKER_BEGIN" "$ZSHRC" 2>/dev/null; then
-        DETAIL="block present in ~/.zshrc"
+    if grep -qF "$MARKER_BEGIN" "$HOME/.bashrc" 2>/dev/null; then
+        DETAIL="block present in ~/.bashrc"
         return 0
     fi
-    if grep -q 'NVM_DIR' "$ZSHRC" 2>/dev/null \
-       && grep -q 'BUN_INSTALL' "$ZSHRC" 2>/dev/null \
-       && grep -q '\.local/bin' "$ZSHRC" 2>/dev/null; then
-        DETAIL="already configured by hand in ~/.zshrc"
+    if grep -q 'NVM_DIR' "$HOME/.bashrc" 2>/dev/null \
+       && grep -q 'BUN_INSTALL' "$HOME/.bashrc" 2>/dev/null \
+       && grep -q '\.local/bin' "$HOME/.bashrc" 2>/dev/null; then
+        DETAIL="already configured by hand in ~/.bashrc"
         return 0
     fi
-    DETAIL="will append PATH block to ~/.zshrc"
+    DETAIL="will append PATH block to ~/.bashrc"
     return 1
 }
 
@@ -231,7 +192,7 @@ detect_aliases() {
     local entry name
     for entry in "${ALIAS_DEFS[@]}"; do
         name="${entry%%|*}"
-        grep -qE "^[[:space:]]*alias[[:space:]]+${name}=" "$ZSHRC" 2>/dev/null \
+        grep -qE "^[[:space:]]*alias[[:space:]]+${name}=" "$HOME/.bash_aliases" 2>/dev/null \
             || MISSING_ALIASES+=("$entry")
     done
     if [ ${#MISSING_ALIASES[@]} -eq 0 ]; then
@@ -278,33 +239,25 @@ detect_agent_browser() {
 }
 
 detect_agent_instructions() {
-    if [ ! -d "$INSTRUCTIONS_DIR" ]; then
-        DETAIL="$NO_SOURCES"
-        return 2
-    fi
-    local entry filename target pending=""
+    local entry filename target pending=()
     for entry in "${INSTRUCTION_FILES[@]}"; do
         filename="${entry%%|*}"
         target="${entry#*|}"
-        cmp -s "$INSTRUCTIONS_DIR/$filename" "$target" 2>/dev/null || pending+="$filename "
+        cmp -s "$INSTRUCTIONS_DIR/$filename" "$target" 2>/dev/null || pending+=("$filename")
     done
-    if [ -z "$pending" ]; then
+    if [ ${#pending[@]} -eq 0 ]; then
         DETAIL="all ${#INSTRUCTION_FILES[@]} files match"
         return 0
     fi
-    DETAIL="will install/update: ${pending% }"
+    DETAIL="will install/update: ${pending[*]}"
     return 1
 }
 
-# Grep, not jq: jq may not be installed until this step runs.
+# Grep, not jq: detection runs before the apt step that installs jq.
 SL_NEED_FILE=0
 SL_NEED_SETTING=0
 
 detect_claude_statusline() {
-    if [ ! -f "$STATUSLINE_SRC" ]; then
-        DETAIL="$NO_SOURCES"
-        return 2
-    fi
     SL_NEED_FILE=0; SL_NEED_SETTING=0
     cmp -s "$STATUSLINE_SRC" "$STATUSLINE_FILE" 2>/dev/null || SL_NEED_FILE=1
     grep -q '"statusLine"' "$CLAUDE_SETTINGS" 2>/dev/null || SL_NEED_SETTING=1
@@ -320,7 +273,7 @@ detect_claude_statusline() {
     return 1
 }
 
-# Two independent halves: the file, and ~/.zshrc sourcing it. Either can already
+# Two independent halves: the file, and ~/.bashrc sourcing it. Either can already
 # be in place on its own, so both are checked and only the missing half is done.
 PN_NEED_FILE=0
 PN_NEED_SOURCE=0
@@ -328,7 +281,7 @@ PN_NEED_SOURCE=0
 detect_project_navigator() {
     PN_NEED_FILE=0; PN_NEED_SOURCE=0
     [ -f "$PN_FILE" ] || PN_NEED_FILE=1
-    grep -q 'project-navigator\.zsh' "$ZSHRC" 2>/dev/null || PN_NEED_SOURCE=1
+    grep -q 'project-navigator\.sh' "$HOME/.bashrc" 2>/dev/null || PN_NEED_SOURCE=1
 
     if [ "$PN_NEED_FILE" -eq 0 ] && [ "$PN_NEED_SOURCE" -eq 0 ]; then
         local n
@@ -338,8 +291,8 @@ detect_project_navigator() {
     fi
 
     local what=""
-    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install ~/.zsh/project-navigator.zsh "
-    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from ~/.zshrc"
+    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install ~/.project-navigator.sh "
+    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from ~/.bashrc"
     DETAIL="will ${what% }"
     return 1
 }
@@ -348,26 +301,10 @@ detect_project_navigator() {
 # INSTALLERS
 #############################################
 
-# NONINTERACTIVE skips Homebrew's "press RETURN" pause (the survey confirmation
-# already covered that) but also makes it use `sudo -n`, which fails rather than
-# asking for a password, so the password is asked for and cached up front.
-install_homebrew() {
-    if ! load_brew; then
-        sudo -v
-        NONINTERACTIVE=1 run_installer https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh bash
-        load_brew
-    fi
-    if ! xcode-select -p >/dev/null 2>&1; then
-        log_warn "Command Line Tools missing — run 'xcode-select --install', finish the dialog, then re-run"
-        return 1
-    fi
-    # Login shells get brew on PATH. Apple Silicon needs this; Intel's
-    # /usr/local/bin is already on the default PATH, where it is harmless.
-    if ! grep -q 'brew shellenv' "$ZPROFILE" 2>/dev/null; then
-        backup_once "$ZPROFILE"
-        printf '\neval "$(%s shellenv zsh)"\n' "$(command -v brew)" >> "$ZPROFILE"
-        log_ok "added brew shellenv to ~/.zprofile"
-    fi
+install_apt_packages() {
+    sudo apt update
+    [ ${#MISSING_PKGS[@]} -gt 0 ] && sudo apt install -y "${MISSING_PKGS[@]}"
+    return 0
 }
 
 # Falls back to master when the GitHub API is unreachable or rate-limited,
@@ -380,12 +317,11 @@ resolve_nvm_ref() {
     if [ -n "${tag:-}" ]; then echo "$tag"; else echo "master"; fi
 }
 
-# PROFILE=/dev/null stops nvm's installer editing ~/.zshrc; shell-path owns that.
 install_nvm() {
     local ref
     ref="$(resolve_nvm_ref)"
     log_info "installing nvm ${ref}"
-    PROFILE=/dev/null run_installer "https://raw.githubusercontent.com/nvm-sh/nvm/${ref}/install.sh" bash
+    curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${ref}/install.sh" | bash
 }
 
 install_node() {
@@ -395,67 +331,74 @@ install_node() {
     nvm use default
 }
 
-# The runtime comes from Homebrew so `brew upgrade` keeps it current; global
-# packages (pi) still land in ~/.bun/bin, which shell-path puts on PATH.
 install_bun() {
-    load_brew
-    brew install bun
+    curl -fsSL https://bun.sh/install | bash
+    export BUN_INSTALL="$HOME/.bun"
+    export PATH="$BUN_INSTALL/bin:$PATH"
 }
 
 install_shell_path() {
     mkdir -p "$HOME/.local/bin"
-    backup_once "$ZSHRC"
-    cat >> "$ZSHRC" <<EOF
+    backup_once "$HOME/.bashrc"
+    cat >> "$HOME/.bashrc" <<EOF
 
 ${MARKER_BEGIN}
-export PATH="\$HOME/.local/bin:\$PATH"
-
 export NVM_DIR="\$HOME/.nvm"
 [ -s "\$NVM_DIR/nvm.sh" ] && \\. "\$NVM_DIR/nvm.sh"
 [ -s "\$NVM_DIR/bash_completion" ] && \\. "\$NVM_DIR/bash_completion"
 
 export BUN_INSTALL="\$HOME/.bun"
 export PATH="\$BUN_INSTALL/bin:\$PATH"
+export PATH="\$HOME/.local/bin:\$PATH"
+
+[ -f "\$HOME/.bash_aliases" ] && . "\$HOME/.bash_aliases"
 ${MARKER_END}
 EOF
 }
 
-install_claude()      { run_installer https://claude.ai/install.sh bash; }
+install_claude()      { curl -fsSL https://claude.ai/install.sh | bash; }
 install_codex()       { load_nvm; npm i -g @openai/codex; }
 install_pi()          { bun add -g @earendil-works/pi-coding-agent; }
-
-# Prime Intellect's installer asks up to three times (install, prepare the Python
-# runtime, and native-binary install) and reads its answers from /dev/tty, so
-# neither a pipe nor `yes |` can answer them. Every prompt defaults to yes, and
-# when no terminal can be opened each one proceeds as if yes was pressed. So the
-# installer runs detached from the terminal (without_tty), which is the same as
-# answering yes to everything. The env vars answer the two prompts that have
-# overrides. The survey confirmation above is this script's consent point.
-# Node must already be on PATH: with none, the installer would offer to install
-# its own, and that prompt has no unattended default.
+# Prime Intellect's installer asks twice, and its prompts read /dev/tty directly,
+# so neither a pipe nor an env var can answer them: PRIME_AGENT_INSTALLER_
+# NONINTERACTIVE covers only the native-binary path, and the npm confirmation has
+# no override at all. Taking the controlling terminal away is the supported way
+# through — each prompt reports no terminal and proceeds with its default. The
+# survey confirmation above is this script's consent point; re-asking per vendor
+# is noise. Run through a file, not a pipe: redirecting stdin to /dev/null would
+# otherwise leave sh reading an empty script. setsid needs -w or it forks and the
+# next step races this one.
 install_prime_agent() {
     load_nvm
     local installer rc=0
     installer="$(mktemp)"
-    fetch https://app.primeintellect.ai/prime-agent/install.sh "$installer"
-    PRIME_AGENT_INSTALLER_NONINTERACTIVE=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 \
-        without_tty sh "$installer" < /dev/null || rc=$?
+    curl -fsSL https://app.primeintellect.ai/prime-agent/install.sh -o "$installer"
+    if have setsid; then
+        PRIME_AGENT_INSTALLER_NONINTERACTIVE=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 \
+            setsid -w sh "$installer" < /dev/null || rc=$?
+    else
+        PRIME_AGENT_INSTALLER_NONINTERACTIVE=1 PRIME_AGENT_BOOTSTRAP_KERNEL_ON_INSTALL=1 \
+            sh "$installer" || rc=$?
+    fi
     rm -f "$installer"
     return "$rc"
 }
+install_herdr()       { curl -fsSL https://herdr.dev/install.sh | sh; }
 
-install_herdr()       { run_installer https://herdr.dev/install.sh sh; }
+install_agy() {
+    curl -fsSL https://antigravity.google/cli/install.sh | bash
+    hash -r
+    have agy && agy install
+}
 
-# `agy install` is skipped on purpose: the curl installer already puts agy in
-# ~/.local/bin, and `agy install` would add a second PATH line to ~/.zprofile.
-install_agy()         { run_installer https://antigravity.google/cli/install.sh bash; }
-
-# No --with-deps on macOS: Chrome for Testing needs no extra system libraries.
 install_agent_browser() {
     load_nvm
     npm i -g agent-browser
     hash -r
-    agent-browser install
+    # Chrome for Testing downloads into ~/.agent-browser, but headless Chrome also
+    # needs shared libraries a minimal server image omits; --with-deps installs
+    # them and fails loudly rather than leaving a browser that cannot start.
+    agent-browser install --with-deps
 }
 
 install_agent_instructions() {
@@ -472,12 +415,7 @@ install_agent_instructions() {
     done
 }
 
-# macOS 15 ships /usr/bin/jq; older releases do not, and the status line runs
-# jq on every render, so brew fills the gap.
 install_claude_statusline() {
-    if ! have jq; then
-        load_brew && brew install jq
-    fi
     mkdir -p "$(dirname "$STATUSLINE_FILE")"
     if [ "$SL_NEED_FILE" -eq 1 ]; then
         backup_once "$STATUSLINE_FILE"
@@ -507,80 +445,70 @@ install_project_navigator() {
     if [ "$PN_NEED_FILE" -eq 1 ]; then
         local src tmp
         tmp="$(mktemp)"
-        if curl -fsSL --retry 3 --max-time 30 "$PN_URL" -o "$tmp" 2>/dev/null; then
-            src="$tmp"; log_info "fetched project-navigator.zsh from shell-utils"
+        if curl -fsSL --max-time 30 "$PN_URL" -o "$tmp" 2>/dev/null; then
+            src="$tmp"; log_info "fetched project-navigator.sh from shell-utils"
         elif [ -f "$PN_FALLBACK" ]; then
             src="$PN_FALLBACK"; log_warn "upstream unreachable — using the bundled copy"
         else
             rm -f "$tmp"; log_error "could not fetch $PN_URL and no bundled copy at $PN_FALLBACK"; return 1
         fi
-        grep -q '^typeset -gA PROJECTS=(' "$src" \
-            || { rm -f "$tmp"; log_error "no PROJECTS block in project-navigator.zsh — upstream changed shape"; return 1; }
-        mkdir -p "$(dirname "$PN_FILE")"
-        awk '/^typeset -gA PROJECTS=\(/ { print; inblock=1; next }
+        grep -q '^declare -gA PROJECTS=(' "$src" \
+            || { rm -f "$tmp"; log_error "no PROJECTS block in project-navigator.sh — upstream changed shape"; return 1; }
+        awk '/^declare -gA PROJECTS=\(/ { print; inblock=1; next }
              inblock && /^\)/          { print; inblock=0; next }
              inblock                    { next }
                                         { print }' "$src" > "$PN_FILE"
         rm -f "$tmp"
-        log_ok "installed ~/.zsh/project-navigator.zsh with an empty registry — add projects with 'cdp add <name>'"
+        log_ok "installed ~/.project-navigator.sh with an empty registry — add projects with 'cdp add <name>'"
     else
-        log_warn "~/.zsh/project-navigator.zsh already exists — left untouched"
+        log_warn "~/.project-navigator.sh already exists — left untouched"
     fi
 
     if [ "$PN_NEED_SOURCE" -eq 1 ]; then
-        backup_once "$ZSHRC"
-        # cdp registers its tab completion with compdef, which needs compinit.
-        # Left out when ~/.zshrc (or a framework like oh-my-zsh) already runs it.
-        local compinit_line='autoload -Uz compinit && compinit -C'
-        grep -qE 'compinit|oh-my-zsh\.sh' "$ZSHRC" 2>/dev/null && compinit_line=""
-        {
-            echo
-            echo "# >>> new-device-setup: cdp >>>"
-            [ -n "$compinit_line" ] && echo "$compinit_line"
-            echo '[ -f "$HOME/.zsh/project-navigator.zsh" ] && source "$HOME/.zsh/project-navigator.zsh"'
-            echo "# <<< new-device-setup: cdp <<<"
-        } >> "$ZSHRC"
-        log_ok "~/.zshrc now sources the project navigator"
+        backup_once "$HOME/.bashrc"
+        cat >> "$HOME/.bashrc" <<'EOF'
+
+# >>> new-device-setup: cdp >>>
+[ -f "$HOME/.project-navigator.sh" ] && . "$HOME/.project-navigator.sh"
+# <<< new-device-setup: cdp <<<
+EOF
+        log_ok "~/.bashrc now sources the project navigator"
     fi
 }
 
 install_aliases() {
-    backup_once "$ZSHRC"
+    backup_once "$HOME/.bash_aliases"
     local entry
     {
         echo
-        echo "# >>> new-device-setup: aliases >>>"
+        echo "${MARKER_BEGIN}"
         for entry in "${MISSING_ALIASES[@]}"; do
             echo "${entry#*|}"
         done
-        echo "# <<< new-device-setup: aliases <<<"
-    } >> "$ZSHRC"
+        echo "${MARKER_END}"
+    } >> "$HOME/.bash_aliases"
     log_ok "merged ${#MISSING_ALIASES[@]} alias(es); existing ones left untouched"
 }
 
 #############################################
-# PLAN
+# PREFLIGHT
 #############################################
+
+PLAN=()
 
 survey() {
     PLAN=()
     echo
-    echo "${C_BOLD}Survey${C_RESET} ($(sw_vers -productName 2>/dev/null) $(sw_vers -productVersion 2>/dev/null), $(uname -m))"
+    echo "${C_BOLD}Survey${C_RESET}"
     printf '  %-18s %-9s %s\n' "COMPONENT" "STATUS" "DETAIL"
-    local s fn rc
+    local s fn
     for s in "${STEPS[@]}"; do
         fn="detect_${s//-/_}"
         DETAIL=""
-        # Always run the detector, even under --force: aliases and
-        # project-navigator read what it finds (MISSING_ALIASES, PN_NEED_*) to
-        # know what to write. Exit 2 means the step cannot run from here.
-        rc=0; "$fn" || rc=$?
-        if [ "$rc" -eq 2 ]; then
-            printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "skipped" "$C_RESET" "$DETAIL"
-        elif [ "$OPT_FORCE" -eq 1 ]; then
+        if [ "$OPT_FORCE" -eq 1 ]; then
             PLAN+=("$s")
             printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "forced" "$C_RESET" "reinstall requested"
-        elif [ "$rc" -eq 0 ]; then
+        elif "$fn"; then
             printf '  %-18s %b%-9s%b %s%s%s\n' "$s" "$C_GREEN" "present" "$C_RESET" "$C_DIM" "$DETAIL" "$C_RESET"
         else
             PLAN+=("$s")
@@ -593,8 +521,10 @@ survey() {
 confirm() {
     [ "$OPT_YES" -eq 1 ] && return 0
     local ans prompt="Install the ${#PLAN[@]} component(s) above? [y/N] "
-    # Piped into bash (curl ... | bash) stdin carries the script itself, so the
-    # answer has to come from the terminal directly.
+    # Piped into bash (curl ... | bash, or the standalone bundle) stdin carries
+    # the script itself, so the answer has to come from the terminal directly.
+    # /dev/tty passes -r yet fails to open when there is no controlling terminal,
+    # so the open is attempted in a subshell that can absorb the failure.
     if [ -t 0 ]; then
         read -r -p "$prompt" ans
     elif ( : < /dev/tty ) 2>/dev/null; then
@@ -663,15 +593,20 @@ ${C_BOLD}Still to do by hand — each tool authenticates separately:${C_RESET}
   herdr           see: herdr --help
 
 ${C_BOLD}Then:${C_RESET}
-  exec zsh -l     reload the shell
+  exec bash -l    reload the shell
   upd             confirm every tool updates
-  cdp add <name>  register this Mac's projects (the registry starts empty)
+  cdp add <name>  register this device's projects (the registry starts empty)
 
 ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
-  brew install just gh uv              jj alias needs just
-  brew install --cask docker           dc alias needs Docker Desktop
   npm i -g agent-device @cometix/ccline wrangler
   bun add -g dispatch
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  sudo apt install -y gh
+
+${C_BOLD}Config worth copying from the old device:${C_RESET}
+  The shared Claude, Codex, and Antigravity instructions and the Claude status
+  line are already installed.
+  Copy private credentials and remaining tool state separately when needed.
 
 ${C_BOLD}Project navigator:${C_RESET} installed from https://github.com/CGYCGY/shell-utils
 EOF
@@ -683,33 +618,22 @@ EOF
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        -y|--yes)            OPT_YES=1 ;;
-        --upgrade)           OPT_UPGRADE=1 ;;
-        --force)             OPT_FORCE=1 ;;
-        --status)            OPT_STATUS=1 ;;
-        --with-instructions) ;;  # once opt-in, now the default; still accepted so old commands run
-        --reset)             rm -f "$STATE_FILE"; log_ok "saved progress discarded"; exit 0 ;;
-        -h|--help)           awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
-        *)                   log_error "unknown option: $1"; exit 1 ;;
+        -y|--yes)   OPT_YES=1 ;;
+        --upgrade)  OPT_UPGRADE=1 ;;
+        --force)    OPT_FORCE=1 ;;
+        --status)   OPT_STATUS=1 ;;
+        --reset)    rm -f "$STATE_FILE"; log_ok "saved progress discarded"; exit 0 ;;
+        -h|--help)  awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
+        *)          log_error "unknown option: $1"; exit 1 ;;
     esac
     shift
 done
 
-if [ "$(uname -s)" != "Darwin" ]; then
-    log_error "this is the macOS script — on Linux use ../ai-dev-setup.sh"
-    exit 1
-fi
-if [ "$(id -u)" -eq 0 ]; then
-    log_error "run as your normal user, not root — Homebrew refuses to run as root"
-    exit 1
-fi
-
 mkdir -p "$STATE_DIR"
 
 # The tools install into these; put them on PATH so detection sees them
-# on a resumed run, before ~/.zshrc has been reloaded.
+# on a resumed run, before ~/.bashrc has been reloaded.
 export PATH="$HOME/.local/bin:$HOME/.bun/bin:$PATH"
-load_brew || true
 
 if [ -s "$STATE_FILE" ]; then
     log_warn "a previous run was interrupted after: $(tr '\n' ' ' < "$STATE_FILE")"
@@ -734,8 +658,8 @@ exec > >(tee -a "$LOG_FILE") 2>&1
 echo "=== $(date '+%Y-%m-%d %H:%M:%S') — installing: ${PLAN[*]:-none} ==="
 
 if [ "$OPT_UPGRADE" -eq 1 ]; then
-    log_info "brew update && brew upgrade"
-    load_brew && brew update && brew upgrade
+    log_info "apt dist-upgrade"
+    sudo apt update && sudo apt dist-upgrade -y
 fi
 
 run_plan

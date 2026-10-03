@@ -78,8 +78,9 @@ HEADER
     printf '# %s, bundled as a single self-extracting file.\n' "$title"
     cat <<'HEADER'
 #
-# GENERATED FILE — do not edit. Change the sources in the repository's ai-dev/
-# directory, then run ./build-standalone.sh to regenerate this.
+# GENERATED FILE — do not edit. Change the sources in the repository's
+# workstation/shared/ai-dev/ directory, then run ./build-standalone.sh to
+# regenerate this.
 #
 # Unpacks to a temporary directory and runs the setup from there. Every flag is
 # forwarded, so -y, --status, --upgrade, --force and --reset behave as usual.

@@ -1,50 +1,62 @@
 # VPS Automation Scripts Collection
 
-Professional automation scripts for VPS/server management, security, and data migration.
+Setup and management scripts for two kinds of machines:
+
+- **Server**: a Linux VPS hosting [Coolify](https://coolify.io), either the dashboard or a server it manages.
+- **Workstation**: a machine used for work, Linux or macOS, set up as an AI coding-agent box.
 
 ## Quick Start
 
 ```bash
-# Clone the repository
 git clone https://github.com/CGYCGY/vps-automation-scripts-collection.git
 cd vps-automation-scripts-collection
 
-# Run the main setup script
-chmod +x setup.sh
-sudo ./setup.sh
+sudo ./setup.sh server       # Linux VPS hosting Coolify
+./setup.sh workstation       # machine used for work (no sudo)
+./setup.sh                   # ask which one
 ```
 
-The interactive menu will guide you through available options.
+Options after the type are passed through, so `sudo ./setup.sh server --full` is
+the same as `sudo ./server/setup.sh --full`.
 
-### Command Line Options
+### Server Options
 
 ```bash
-sudo ./setup.sh --full       # Full server setup (swap + tailscale + coolify)
-sudo ./setup.sh --tailscale  # Tailscale SSH setup only
-sudo ./setup.sh --coolify    # Coolify installation only
-sudo ./setup.sh --swap       # Swap configuration only
-sudo ./setup.sh --minio      # MinIO migration tool
-./setup.sh --minio-users     # MinIO user & bucket manager
-./setup.sh --postgres        # PostgreSQL manager
-./setup.sh --ai-dev          # AI development toolchain setup (run without sudo)
-sudo ./setup.sh --help       # Show all options
+sudo ./server/setup.sh --full       # Full server setup (swap + tailscale + coolify)
+sudo ./server/setup.sh --tailscale  # Tailscale SSH setup only
+sudo ./server/setup.sh --coolify    # Coolify installation only
+sudo ./server/setup.sh --swap       # Swap configuration only
+./server/setup.sh --minio           # MinIO migration tool
+./server/setup.sh --minio-users     # MinIO user & bucket manager
+./server/setup.sh --postgres        # PostgreSQL manager
+sudo ./server/setup.sh --help       # Show all options
 ```
+
+### Workstation Options
+
+```bash
+./workstation/setup.sh              # Detects Linux or macOS and runs the matching setup
+./workstation/setup.sh --status     # Survey the machine without changing anything
+```
+
+Every flag is forwarded to the AI dev setup; see [its README](workstation/shared/ai-dev/README.md#options).
 
 ## Available Scripts
 
-| Script | Description | Documentation |
-|--------|-------------|---------------|
-| **Tailscale SSH** | Secure VPS with Tailscale SSH - no more SSH keys | [tailscale/README.md](tailscale/README.md) |
-| **Coolify Setup** | Self-hostable Heroku/Netlify alternative | [coolify/README.md](coolify/README.md) |
-| **MinIO Migration** | Migrate MinIO data between servers | [minio/README.md](minio/README.md) |
-| **MinIO User Manager** | Create users with bucket-specific access | [minio/README.md](minio/README.md) |
-| **PostgreSQL Manager** | Manage databases, users, and permissions | [postgres/README.md](postgres/README.md) |
-| **Swap Config** | RAM-based optimized swap settings | [swap/README.md](swap/README.md) |
-| **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available; [macOS version](ai-dev/macos/README.md)) | [ai-dev/README.md](ai-dev/README.md) |
+| Type | Script | Description | Documentation |
+|------|--------|-------------|---------------|
+| Server | **Coolify Setup** | Self-hostable Heroku/Netlify alternative | [server/coolify/README.md](server/coolify/README.md) |
+| Server | **MinIO Migration** | Migrate MinIO data between servers | [server/minio/README.md](server/minio/README.md) |
+| Server | **MinIO User Manager** | Create users with bucket-specific access | [server/minio/README.md](server/minio/README.md) |
+| Server | **PostgreSQL Manager** | Manage databases, users, and permissions | [server/postgres/README.md](server/postgres/README.md) |
+| Shared (Linux) | **Tailscale SSH** | Secure the machine with Tailscale SSH - no more SSH keys | [shared/linux/tailscale/README.md](shared/linux/tailscale/README.md) |
+| Shared (Linux) | **Swap Config** | RAM-based optimized swap settings | [shared/linux/swap/README.md](shared/linux/swap/README.md) |
+| Workstation | **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available; [macOS version](workstation/shared/ai-dev/macos/README.md)) | [workstation/shared/ai-dev/README.md](workstation/shared/ai-dev/README.md) |
 
 ## Supported Systems
 
-- **OS**: Ubuntu 22.04, 24.04 LTS / Debian 11, 12
+- **Server OS**: Ubuntu 22.04, 24.04 LTS / Debian 11, 12
+- **Workstation OS**: the same Linux releases, or macOS
 - **Architectures**: ARM64 (aarch64), x86_64 (amd64)
 - **Providers**: Oracle Cloud, DigitalOcean, Linode, Vultr, Hetzner, Contabo, OVH, and most VPS providers
 
@@ -52,70 +64,79 @@ sudo ./setup.sh --help       # Show all options
 
 ### New Server Setup
 ```bash
-sudo ./setup.sh --full
+sudo ./server/setup.sh --full
 ```
 This runs swap configuration, Tailscale SSH setup, and Coolify installation in sequence.
 
 ### Secure Existing Server
 ```bash
-sudo ./setup.sh --tailscale
+sudo ./server/setup.sh --tailscale
 ```
 Restricts SSH access to Tailscale network only.
 
 ### Migrate MinIO Data
 ```bash
-./setup.sh --minio
+./server/setup.sh --minio
 ```
 Interactive tool for migrating MinIO between servers.
 
 ### Manage PostgreSQL
 ```bash
-./setup.sh --postgres
+./server/setup.sh --postgres
 ```
 Interactive tool for managing PostgreSQL databases, users, and permissions.
 
-### Remote AI Dev Box
+### Linux Workstation
 ```bash
-sudo ./setup.sh --tailscale
-./setup.sh --ai-dev
+sudo ./shared/linux/tailscale/tailscale-vps-setup.sh
+./workstation/setup.sh
 ```
 Secures remote access with Tailscale, then installs the AI development toolchain for the normal user.
+
+### Mac Workstation
+```bash
+./workstation/setup.sh
+```
+Installs Homebrew and the AI development toolchain.
 
 ## Directory Structure
 
 ```
 .
-├── setup.sh              # Main entry point
-├── ai-dev/
-│   ├── ai-dev-setup.sh   # AI development toolchain setup
-│   ├── ai-dev-standalone.sh # Generated single-file installer
-│   ├── build-standalone.sh  # Regenerates the single-file installer
-│   ├── agent-instructions/
-│   │   ├── CLAUDE.md     # Claude Code global instructions
-│   │   ├── AGENTS.md     # Codex global instructions
-│   │   └── GEMINI.md     # Antigravity global instructions
-│   ├── macos/
-│   │   ├── ai-dev-setup-macos.sh  # macOS (Homebrew + zsh) version
-│   │   ├── project-navigator.zsh  # zsh cdp offline fallback
-│   │   └── README.md              # macOS documentation
-│   └── README.md         # AI development documentation
-├── coolify/
-│   ├── coolify-setup.sh  # Coolify installation script
-│   └── README.md         # Coolify documentation
-├── minio/
-│   ├── minio_migration.sh          # MinIO migration tool
-│   ├── minio_user_bucket_manager.sh # MinIO user & bucket manager
-│   └── README.md                    # MinIO documentation
-├── postgres/
-│   ├── postgres_manager.sh          # PostgreSQL manager
-│   └── README.md                    # PostgreSQL documentation
-├── swap/
-│   ├── swap-configuration-module.sh # Swap setup script
-│   └── README.md                    # Swap documentation
-└── tailscale/
-    ├── tailscale-vps-setup.sh       # Generic VPS setup
-    ├── tailscale-vps-setup-oracle.sh # Oracle Cloud setup
-    └── README.md                     # Tailscale documentation
+├── setup.sh                    # Entry point: picks server or workstation
+├── server/                     # Linux VPS hosting Coolify
+│   ├── setup.sh                # Server menu
+│   ├── coolify/
+│   │   ├── coolify-setup.sh         # Coolify dashboard installation
+│   │   ├── coolify-remote-setup.sh  # Prepare a server for an existing dashboard
+│   │   └── README.md
+│   ├── minio/
+│   │   ├── minio_migration.sh          # MinIO migration tool
+│   │   ├── minio_user_bucket_manager.sh # MinIO user & bucket manager
+│   │   └── README.md
+│   └── postgres/
+│       ├── postgres_manager.sh          # PostgreSQL manager
+│       └── README.md
+├── workstation/                # Machines used for work
+│   ├── setup.sh                # Detects Linux or macOS
+│   └── shared/                 # Used by both Linux and macOS workstations
+│       └── ai-dev/
+│           ├── ai-dev-setup.sh       # Linux AI development toolchain setup
+│           ├── ai-dev-standalone.sh  # Generated single-file installer
+│           ├── build-standalone.sh   # Regenerates the single-file installers
+│           ├── agent-instructions/   # CLAUDE.md, AGENTS.md, GEMINI.md
+│           ├── claude/               # Claude Code status line
+│           ├── macos/                # macOS (Homebrew + zsh) version
+│           └── README.md
+└── shared/
+    └── linux/                  # Used by both servers and Linux workstations
+        ├── swap/
+        │   ├── swap-configuration-module.sh # Swap setup script
+        │   └── README.md
+        └── tailscale/
+            ├── tailscale-vps-setup.sh        # Generic VPS setup
+            ├── tailscale-vps-setup-oracle.sh # Oracle Cloud setup
+            └── README.md
 ```
 
 ## Features at a Glance
@@ -130,7 +151,7 @@ Secures remote access with Tailscale, then installs the AI development toolchain
 
 ## Security Considerations
 
-- System-level scripts require root/sudo; AI Dev Setup must run as the normal user
+- Server scripts require root/sudo; workstation setup must run as the normal user
 - Credentials stored with restricted permissions (mode 600)
 - Tailscale restricts SSH to private network
 - Scripts are idempotent (safe to run multiple times)

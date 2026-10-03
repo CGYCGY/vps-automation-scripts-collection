@@ -16,13 +16,13 @@ Interactive PostgreSQL management tool for databases, users, and permissions. Wo
 ### Via Main Setup Script
 
 ```bash
-./setup.sh --postgres
+./server/setup.sh --postgres
 ```
 
 ### Direct Execution
 
 ```bash
-cd postgres
+cd server/postgres
 ./postgres_manager.sh
 ```
 
@@ -523,4 +523,4 @@ A: Currently focused on `public` schema. For custom schemas, use psql directly o
 
 ## License
 
-MIT License - See [LICENSE](../LICENSE) for details.
+MIT License - See [LICENSE](../../LICENSE) for details.

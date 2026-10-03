@@ -11,7 +11,7 @@ everything — the setup script, the agent instructions and the `cdp` fallback �
 so nothing else has to be fetched:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/ai-dev/ai-dev-standalone.sh
+curl -fsSLO https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/workstation/shared/ai-dev/ai-dev-standalone.sh
 chmod +x ai-dev-standalone.sh
 ./ai-dev-standalone.sh
 ```
@@ -20,7 +20,7 @@ Or without touching disk, which works because the prompt reads the terminal
 rather than standard input:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/ai-dev/ai-dev-standalone.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/workstation/shared/ai-dev/ai-dev-standalone.sh | bash
 ```
 
 Run the setup as your normal user, not with `sudo`. It installs into `$HOME` and
@@ -38,10 +38,10 @@ Working on the scripts themselves, or already have the repository on the box:
 ```bash
 git clone https://github.com/CGYCGY/vps-automation-scripts-collection.git
 cd vps-automation-scripts-collection
-./setup.sh --ai-dev
+./workstation/setup.sh
 ```
 
-`ai-dev/ai-dev-setup.sh` can be run directly too. It is tracked as executable,
+`workstation/shared/ai-dev/ai-dev-setup.sh` can be run directly too. It is tracked as executable,
 so a clone needs no `chmod` — unlike a raw download, which carries no file mode.
 
 ## What It Does
@@ -95,7 +95,7 @@ leaves no diff, and `--check` is a reliable staleness test.
 Refresh the bundled fallback when upstream changes:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh -o ai-dev/project-navigator.sh
+curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh -o workstation/shared/ai-dev/project-navigator.sh
 ```
 
 ## Options

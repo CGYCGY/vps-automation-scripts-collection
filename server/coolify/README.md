@@ -77,7 +77,7 @@ sudo ./coolify-setup.sh
 ```bash
 # Clone the repository
 git clone https://github.com/CGYCGY/vps-automation-scripts-collection.git
-cd vps-automation-scripts-collection/coolify
+cd vps-automation-scripts-collection/server/coolify
 
 # Make it executable
 chmod +x coolify-remote-setup.sh

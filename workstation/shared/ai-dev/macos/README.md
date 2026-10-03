@@ -12,7 +12,7 @@ script, the agent instructions, the Claude status line and the `cdp` fallback â€
 so nothing else has to be fetched:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/ai-dev/macos/ai-dev-setup-macos-standalone.sh
+curl -fsSLO https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/workstation/shared/ai-dev/macos/ai-dev-setup-macos-standalone.sh
 chmod +x ai-dev-setup-macos-standalone.sh
 ./ai-dev-setup-macos-standalone.sh
 ```
@@ -22,7 +22,7 @@ Or from a checkout:
 ```bash
 git clone https://github.com/CGYCGY/vps-automation-scripts-collection.git
 cd vps-automation-scripts-collection
-./ai-dev/macos/ai-dev-setup-macos.sh
+./workstation/setup.sh
 ```
 
 Run it as your normal user, not with `sudo`. If Homebrew is missing, the script
@@ -105,7 +105,7 @@ Linux one â€” see [Regenerating the Standalone File](../README.md#regenerating-t
 upstream changes:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/zsh/profile-scripts/project-navigator.zsh -o ai-dev/macos/project-navigator.zsh
+curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/zsh/profile-scripts/project-navigator.zsh -o workstation/shared/ai-dev/macos/project-navigator.zsh
 ```
 
 ## After Installing

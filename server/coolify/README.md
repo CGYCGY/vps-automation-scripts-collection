@@ -1,376 +1,127 @@
-# 🚀 Coolify Setup Scripts
+# Coolify Setup
 
-Comprehensive setup scripts for [Coolify](https://coolify.io) - the self-hostable Heroku/Netlify alternative.
+Sets up [Coolify](https://coolify.io) on a Linux server, in one of two roles:
 
-## 📦 Available Scripts
+- **dashboard**: installs Coolify itself.
+- **managed**: prepares a server that a Coolify dashboard deploys to.
 
-### 1. coolify-setup.sh - Dashboard Installation
-Install Coolify dashboard on your main controller server.
+Coolify reaches managed servers through Tailscale SSH as the user `coolify`,
+so no SSH key is ever copied around. Run the Tailscale setup and the
+[tailnet policy](../../docs/tailscale-tailnet.md) first.
 
-### 2. coolify-remote-setup.sh - Remote Server Setup
-Prepare servers to be connected to an existing Coolify dashboard as managed/remote servers.
-
-## ✨ Features
-
-### Dashboard Setup (coolify-setup.sh)
-
-| Feature | Description |
-|---------|-------------|
-| 👤 **User Setup** | Creates a dedicated `coolify` user with proper permissions |
-| 📦 **Coolify Install** | Automated Coolify installation |
-| 🐙 **GitHub Registry** | Configure authentication for GitHub Container Registry (ghcr.io) |
-| 🔒 **Cloudflare SSL** | Setup Cloudflare Origin Certificates for SSL/TLS |
-
-### Remote Server Setup (coolify-remote-setup.sh)
-
-| Feature | Description |
-|---------|-------------|
-| 👤 **User Setup** | Creates `coolify` user with passwordless sudo |
-| 🐳 **Docker Install** | Installs Docker Engine if not present |
-| 🔑 **SSH Setup** | Configures SSH key for Coolify access |
-| 🐙 **GitHub Registry** | Configure authentication for GitHub Container Registry (ghcr.io) |
-| 🔒 **Cloudflare SSL** | Setup Cloudflare Origin Certificates for SSL/TLS |
-| 🔥 **Firewall Check** | Smart firewall configuration (only if needed) |
-| ✅ **Verification** | Tests setup and shows next steps |
-
-## 📋 Prerequisites
-
-### For Dashboard Installation (coolify-setup.sh)
-- Ubuntu 20.04/22.04/24.04 LTS (or Debian-based distro)
-- Root access or sudo privileges
-- A domain configured with Cloudflare (for SSL setup)
-- GitHub account with Personal Access Token (for private registry)
-
-### For Remote Server Setup (coolify-remote-setup.sh)
-- Ubuntu 20.04/22.04/24.04 LTS (or Debian-based distro)
-- Root access or sudo privileges
-- Existing Coolify dashboard (on another server)
-- SSH public key from Coolify dashboard
-- GitHub account with Personal Access Token (optional, for private registry)
-- A domain configured with Cloudflare (optional, for SSL setup)
-
-## 🚀 Quick Start
-
-### Dashboard Installation (coolify-setup.sh)
-
-#### One-liner Installation
-
-```bash
-curl -fsSL https://gist.githubusercontent.com/CGYCGY/15732ea13901718df6ab97033694aa63/raw/coolify-setup.sh | sudo bash
-```
-
-#### Manual Installation
-
-```bash
-# Download the script
-wget https://gist.githubusercontent.com/CGYCGY/15732ea13901718df6ab97033694aa63/raw/coolify-setup.sh
-
-# Make it executable
-chmod +x coolify-setup.sh
-
-# Run with sudo
-sudo ./coolify-setup.sh
-```
-
-### Remote Server Setup (coolify-remote-setup.sh)
-
-```bash
-# Clone the repository
-git clone https://github.com/CGYCGY/vps-automation-scripts-collection.git
-cd vps-automation-scripts-collection/server/coolify
-
-# Make it executable
-chmod +x coolify-remote-setup.sh
-
-# Run with sudo
-sudo ./coolify-remote-setup.sh
-```
-
-## 📖 Usage
-
-### Dashboard Installation (coolify-setup.sh)
-
-#### Interactive Mode (Recommended)
+## Quick Start
 
 ```bash
 sudo ./coolify-setup.sh
 ```
 
-This displays a menu where you can select which components to set up.
+It is also run by `sudo ./server/setup.sh --coolify` and `--full`.
 
-#### Command Line Options
+## What It Does
+
+| Phase | dashboard | managed |
+|-------|-----------|---------|
+| plan | Asks the role, and whether to set up ghcr.io and a Cloudflare certificate (with its domain) | same |
+| deps | Installs curl, wget, git, jq, openssl | same, plus Docker from get.docker.com |
+| auto | Runs Coolify's official installer, which brings its own Docker; skipped if already installed unless you ask to rerun it | Creates user `coolify` in the `docker` and `sudo` groups, with passwordless sudo |
+| interactive | Asks for the GitHub token, and takes the pasted Cloudflare certificate and key | same |
+| summary | Dashboard URL over the tailnet, tagging reminder | Checks the `coolify` user and Docker, then shows what to enter in Coolify |
+
+Coolify needs passwordless sudo, because it runs `docker` and `apt` through
+sudo and can't answer a password prompt.
+
+The firewall is left to the Tailscale setup.
+
+## Adding a Managed Server to Coolify
+
+1. Coolify → **Servers → Add Server**
+2. IP/domain: the server's Tailscale name or IP (the script prints it). User:
+   `coolify`. Port: `22`.
+3. Coolify still makes you pick a private key. Any key works, because Tailscale
+   SSH ignores it.
+4. **Validate Server**.
+
+If validation fails with exit code 255, the tailnet policy is missing the
+`tag:coolify → tag:vps` rule for user `coolify`, or the dashboard isn't tagged
+`tag:coolify`. See [Checking Who Got In](../../docs/tailscale-tailnet.md#checking-who-got-in).
+
+## Optional Extras
+
+### GitHub Container Registry
+
+Logs Docker in to `ghcr.io`, so Coolify can pull private images. Create a token
+at GitHub → Settings → Developer settings → Personal access tokens (classic),
+with scope `read:packages`. Root's credentials are also copied to the
+`coolify` user, which is the user Coolify pulls as on a managed server.
+
+### Cloudflare Origin Certificate
+
+Installs a Cloudflare origin certificate into Coolify's proxy for HTTPS.
+
+1. Cloudflare → your domain → SSL/TLS → Origin Server → **Create Certificate**:
+   RSA (2048), hostnames `*.example.com` and `example.com`, 15 years.
+2. Paste the certificate and the key when the script asks, or pass them as
+   files with `CF_CERT_FILE` and `CF_KEY_FILE`.
+3. The script saves them to `/data/coolify/proxy/certs/`, checks them with
+   openssl, and writes `/data/coolify/proxy/dynamic/cloudflare-origin-cert.yaml`
+   for Traefik.
+4. In Cloudflare, set SSL/TLS to **Full (strict)** and turn on **Always Use
+   HTTPS**. Then restart the proxy in Coolify and redeploy.
+
+## Unattended Runs
+
+Every question can be answered up front, and `-y` takes the defaults for the rest:
 
 ```bash
-# Full setup (all options)
-sudo ./coolify-setup.sh --all
-
-# Individual components
-sudo ./coolify-setup.sh --user        # Create coolify user only
-sudo ./coolify-setup.sh --install     # Install Coolify only
-sudo ./coolify-setup.sh --github      # Setup GitHub registry only
-sudo ./coolify-setup.sh --cloudflare  # Setup Cloudflare cert only
-
-# Help
-sudo ./coolify-setup.sh --help
+sudo MACHINE_ROLE=managed ./coolify-setup.sh -y
 ```
 
-### Remote Server Setup (coolify-remote-setup.sh)
+| Variable | Values |
+|----------|--------|
+| `MACHINE_ROLE` | `dashboard`, `managed` |
+| `COOLIFY_REINSTALL` | `yes` / `no`: rerun Coolify's installer (upgrades it) |
+| `COOLIFY_GHCR` | `yes` / `no`: log Docker in to ghcr.io |
+| `GHCR_USER`, `GHCR_TOKEN` | GitHub username and token; the token is asked for if unset |
+| `COOLIFY_CF_CERT` | `yes` / `no`: install a Cloudflare origin certificate |
+| `CF_DOMAIN` | domain the certificate covers |
+| `CF_TRAEFIK_CONFIG` | `yes` / `no`: write the Traefik config that loads it |
+| `CF_CERT_FILE`, `CF_KEY_FILE` | certificate and key files; pasted if unset |
 
-#### Interactive Mode (Recommended)
+Options: `-y` (defaults, no questions), `--phase plan|deps|auto|interactive|summary`
+(used by the server menu), `--help`.
 
-```bash
-sudo ./coolify-remote-setup.sh
-```
-
-#### Command Line Options
-
-```bash
-# Full setup (all steps)
-sudo ./coolify-remote-setup.sh --all
-
-# Individual steps
-sudo ./coolify-remote-setup.sh --user       # Create coolify user only
-sudo ./coolify-remote-setup.sh --docker     # Install Docker only
-sudo ./coolify-remote-setup.sh --ssh        # Setup SSH key only
-sudo ./coolify-remote-setup.sh --github     # Setup GitHub registry only
-sudo ./coolify-remote-setup.sh --cloudflare # Setup Cloudflare cert only
-sudo ./coolify-remote-setup.sh --firewall   # Check firewall only
-sudo ./coolify-remote-setup.sh --verify     # Verify setup only
-
-# Help
-sudo ./coolify-remote-setup.sh --help
-```
-
-## 📚 Detailed Setup Guide
-
-### Dashboard Installation
-
-#### 1️⃣ Create Coolify User
-
-Creates a dedicated `coolify` user with:
-- Home directory at `/home/coolify`
-- Added to `docker` and `sudo` groups
-- Passwordless sudo access
-
-#### 2️⃣ Install Coolify
-
-Runs the official Coolify installation script which:
-- Installs Docker (if not present)
-- Sets up Coolify containers
-- Configures Traefik proxy
-- Creates data directories at `/data/coolify`
-
-After installation, access Coolify at: `http://YOUR_SERVER_IP:8000`
-
-### Remote Server Setup
-
-#### 1️⃣ Create Coolify User
-
-Creates a dedicated `coolify` user with:
-- Home directory at `/home/coolify`
-- Added to `docker` and `sudo` groups
-- **Passwordless sudo configured** (required by Coolify):
-  ```bash
-  echo "coolify ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/coolify
-  ```
-  This allows Coolify to run commands like `docker`, `apt`, etc. without password prompts.
-
-#### 2️⃣ Install Docker
-
-Installs Docker Engine using the official script:
-- Downloads from `https://get.docker.com`
-- Starts and enables Docker service
-- Verifies `coolify` user can run docker commands
-
-#### 3️⃣ Setup SSH Key
-
-Configures SSH access for Coolify:
-- Creates `/home/coolify/.ssh` directory with proper permissions
-- Prompts you to paste SSH public key from Coolify UI
-- Where to get the key:
-  1. Go to Coolify dashboard
-  2. Navigate to: **Servers → Add Server**
-  3. Copy the SSH public key shown in the UI
-  4. Paste it when prompted by the script
-
-#### 4️⃣ Firewall Check (Smart)
-
-Intelligently checks and configures firewall:
-- Checks if UFW is installed and active
-- Verifies if SSH (port 22) is already allowed
-- Only prompts to configure if SSH is NOT allowed
-- Skips firewall config if already accessible
-
-#### 5️⃣ Verification & Next Steps
-
-Tests the setup:
-- Verifies `coolify` user exists with proper groups
-- Tests docker access: `su - coolify -c "docker ps"`
-- Displays server IP for adding to Coolify dashboard
-- Shows next steps for connecting in Coolify UI
-
-#### 3️⃣ Setup GitHub Container Registry
-
-Configures Docker to authenticate with `ghcr.io` for pulling private images.
-
-**Before running, create a GitHub PAT:**
-1. Go to GitHub → Settings → Developer settings
-2. Personal access tokens → Tokens (classic)
-3. Generate new token with `read:packages` scope (add `write:packages` if pushing)
-
-**How it works:**
-- Credentials are stored in `~/.docker/config.json`
-- Coolify automatically detects and uses these credentials
-- Works for both public and private container images
-
-#### 4️⃣ Setup Cloudflare Origin Certificate
-
-Configures SSL/TLS using Cloudflare Origin Certificates for secure HTTPS connections.
-
-**Before running, create an Origin Certificate in Cloudflare:**
-1. Go to Cloudflare Dashboard → Your Domain
-2. SSL/TLS → Origin Server → Create Certificate
-3. Configure:
-   - Private key type: **RSA (2048)**
-   - Hostnames: `*.yourdomain.com`, `yourdomain.com`
-   - Validity: **15 years**
-
-**The script will:**
-- Create certificate files in `/data/coolify/proxy/certs/`
-- Generate Traefik dynamic configuration
-- Verify certificate validity
-
-**After running, configure Cloudflare:**
-- SSL/TLS → Overview → Set to **Full (strict)**
-- SSL/TLS → Edge Certificates → Enable **Always Use HTTPS**
-
-## 🔗 Connecting Remote Servers to Coolify
-
-After running `coolify-remote-setup.sh` on your remote server:
-
-### Step 1: Add Server in Coolify Dashboard
-
-1. Go to your Coolify dashboard
-2. Navigate to: **Servers → Add Server**
-3. Enter the server details:
-   - **Name**: Give your server a friendly name
-   - **IP Address**: Use the IP shown by the setup script
-   - **Port**: `22` (default SSH port)
-   - **User**: `coolify`
-   - **Private Key**: The setup script already configured the public key
-
-### Step 2: Validate Server
-
-1. Click **Validate Server** to test the connection
-2. Coolify will attempt to SSH into the server
-3. If successful, you'll see a green checkmark
-
-### Step 3: Complete Setup
-
-1. Click **Add Server** to complete
-2. The server will appear in your servers list
-3. You can now deploy applications to this server
-
-### Troubleshooting Connection Issues
-
-If validation fails:
+## Troubleshooting
 
 ```bash
-# On the remote server, check SSH access
-sudo -u coolify ssh -v coolify@localhost
-
-# Verify authorized_keys
-sudo cat /home/coolify/.ssh/authorized_keys
-
-# Check SSH daemon is running
-sudo systemctl status sshd
-
-# Test docker access
-sudo -u coolify docker ps
-```
-
-## 🔧 Post-Installation
-
-### Restart Traefik Proxy
-
-After setting up certificates, restart the proxy:
-1. Go to Coolify UI
-2. Servers → Your Server → Proxy
-3. Click **Restart Proxy**
-
-### Redeploy Applications
-
-Redeploy your applications to apply the new SSL configuration.
-
-### Verify SSL
-
-```bash
-# Test SSL connection
-curl -I https://your-app.yourdomain.com
-
-# Detailed SSL check
-openssl s_client -connect your-app.yourdomain.com:443 -servername your-app.yourdomain.com
-```
-
-## 🐛 Troubleshooting
-
-### GitHub Registry Issues
-
-```bash
-# Check if credentials are saved
-cat ~/.docker/config.json
-
-# Test pulling an image
-docker pull ghcr.io/your-org/your-image:tag
-
-# View Coolify deployment logs in UI for auth errors
-```
-
-### Cloudflare Certificate Issues
-
-```bash
-# Check Traefik logs
-docker logs coolify-proxy --tail 100
-
-# Verify certificate is loaded
-docker exec coolify-proxy ls -la /traefik/certs/
-
-# Test SSL connection
-openssl s_client -connect your-app.yourdomain.com:443 -servername your-app.yourdomain.com
-```
-
-### Coolify Not Accessible
-
-```bash
-# Check if containers are running
+# Is Coolify running? (dashboard)
 docker ps | grep coolify
-
-# Check Coolify logs
 docker logs coolify --tail 100
 
-# Restart Coolify
-cd /data/coolify/source
-docker compose down
-docker compose up -d
+# Can the coolify user use Docker and sudo? (managed)
+sudo -u coolify docker ps
+sudo -u coolify sudo -n true && echo ok
+
+# Did the dashboard's SSH get in? (managed)
+journalctl -u tailscaled --since "10 min ago" | grep -E "ssh-conn|ssh-session"
+
+# Is the Cloudflare certificate loaded?
+docker exec coolify-proxy ls -la /traefik/certs/
+docker logs coolify-proxy --tail 100
 ```
 
-## 📁 File Locations
+## File Locations
 
-| Path | Description |
-|------|-------------|
-| `/data/coolify/` | Main Coolify data directory |
-| `/data/coolify/proxy/` | Traefik proxy configuration |
-| `/data/coolify/proxy/certs/` | SSL certificates |
+| Path | Contents |
+|------|----------|
+| `/data/coolify/` | Coolify data |
+| `/data/coolify/source/.env` | Coolify's secrets; back it up somewhere safe |
+| `/data/coolify/proxy/certs/` | TLS certificates |
 | `/data/coolify/proxy/dynamic/` | Traefik dynamic configs |
+| `/etc/sudoers.d/coolify` | Passwordless sudo for `coolify` |
 | `~/.docker/config.json` | Docker registry credentials |
 
-## 🔗 Related Resources
+## Resources
 
 - [Coolify Documentation](https://coolify.io/docs)
-- [Coolify GitHub](https://github.com/coollabsio/coolify)
 - [Cloudflare Origin Certificates](https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/)
 - [GitHub Container Registry](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
-
-## 📝 License
-
-MIT License - Feel free to use and modify as needed.

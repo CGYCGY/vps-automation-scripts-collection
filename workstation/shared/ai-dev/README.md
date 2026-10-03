@@ -7,8 +7,8 @@ Bootstraps a VPS or local box with the author's AI coding-agent toolchain so it 
 ## Quick Start
 
 On a new server or device, download the standalone file and run it. It carries
-everything — the setup script, the agent instructions and the `cdp` fallback —
-so nothing else has to be fetched:
+everything — the setup script, the agent instructions and settings, the Claude
+status line and the `cdp` fallback — so nothing else has to be fetched:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/CGYCGY/vps-automation-scripts-collection/master/workstation/shared/ai-dev/ai-dev-standalone.sh
@@ -62,6 +62,16 @@ and cost) and points `statusLine` in `~/.claude/settings.json` at it. The rest o
 `settings.json` is kept, and a `statusLine` the machine already has is never
 replaced.
 
+It merges the author's agent settings from `agent-settings/` into
+`~/.claude/settings.json` and `~/.codex/config.toml`: permission mode, theme,
+plugins, the Codex status line and similar. The tracked keys win; every other
+key the machine has is kept, including Codex's own `[projects."…"]` tables.
+Model and effort are deliberately left out, because they change too often.
+
+Before agent-browser installs, `agent-browser` is added to npm's
+`allow-scripts` list in `~/.npmrc`. npm 11 skips the install scripts of global
+packages that aren't on that list.
+
 The source files live under `agent-instructions/`. Existing destination files are backed up with a timestamp before they are replaced, and reruns skip files that already match.
 
 This is the author's toolchain. Edit the `APT_PACKAGES` and `ALIAS_DEFS` arrays near the top of `ai-dev-setup.sh` to customize the packages and aliases.
@@ -73,7 +83,8 @@ The three instruction files intentionally remain separate so each tool can use i
 `ai-dev-standalone.sh` and `macos/ai-dev-setup-macos-standalone.sh` are
 generated. The sources stay the truth: `ai-dev-setup.sh`, `project-navigator.sh`,
 `macos/ai-dev-setup-macos.sh`, `macos/project-navigator.zsh`,
-`claude/statusline-command.sh` and the three files under `agent-instructions/`.
+`claude/statusline-command.sh`, the three files under `agent-instructions/` and
+the two under `agent-settings/`.
 After editing any of them, rebuild both:
 
 ```bash

@@ -67,6 +67,12 @@ STATUSLINE_SRC="${SCRIPT_DIR}/../claude/statusline-command.sh"
 STATUSLINE_FILE="$HOME/.claude/statusline-command.sh"
 CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 
+# Defaults merged into each agent's own settings. Only settings chosen on
+# purpose; model and effort stay out because they change too often.
+CLAUDE_DEFAULTS="${SCRIPT_DIR}/../agent-settings/claude-settings.json"
+CODEX_DEFAULTS="${SCRIPT_DIR}/../agent-settings/codex-config.toml"
+CODEX_CONFIG="$HOME/.codex/config.toml"
+
 # Both of the above read files that sit beside this script in a checkout or in
 # the standalone bundle. A lone copy of this script has neither, and the survey
 # says so rather than reporting the step as done.
@@ -81,7 +87,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(homebrew nvm node bun shell-path claude codex pi prime-agent herdr agy agent-browser agent-instructions claude-statusline aliases project-navigator)
+STEPS=(homebrew nvm node bun shell-path claude codex pi prime-agent herdr agy npm-allow-scripts agent-browser agent-instructions claude-statusline agent-settings aliases project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
 
@@ -320,6 +326,105 @@ detect_claude_statusline() {
     return 1
 }
 
+# npm 11 skips install scripts of global packages not on this list, and
+# agent-browser's sets up its native binary. Comma-separated.
+detect_npm_allow_scripts() {
+    load_nvm
+    if ! have npm; then
+        DETAIL="will allow agent-browser's install script"
+        return 1
+    fi
+    case ",$(npm config get allow-scripts 2>/dev/null | tr -d ' ')," in
+        *,agent-browser,*) DETAIL="agent-browser allowed"; return 0 ;;
+    esac
+    DETAIL="will add agent-browser to npm allow-scripts"
+    return 1
+}
+
+# Line-based merge of the tracked Codex defaults into ~/.codex/config.toml,
+# printed to stdout: no TOML writer can be assumed on a fresh device. Our keys
+# replace the device's (a multi-line array value is replaced whole), missing
+# keys go at the end of their table, missing tables at the end of the file,
+# and every other line — tables Codex adds itself included — is left as is.
+merge_codex_config() {
+    local target="$2"
+    [ -f "$target" ] || target=/dev/null
+    awk '
+        function key_of(s) {
+            if (s !~ /^[ \t]*[A-Za-z0-9_-]+[ \t]*=/) return ""
+            sub(/^[ \t]*/, "", s); sub(/[ \t]*=.*/, "", s); return s
+        }
+        function table_of(s) {
+            sub(/^[ \t]*\[+[ \t]*/, "", s); sub(/[ \t]*\]+[ \t]*(#.*)?$/, "", s); return s
+        }
+        function is_header(s) { return s ~ /^[ \t]*\[/ }
+        NR == FNR {
+            if (is_header($0)) { tbl = table_of($0); if (!(tbl in seen)) { seen[tbl] = 1; tbls[++ntbl] = tbl }; next }
+            k = key_of($0); if (k == "") next
+            if (!(tbl in seen)) { seen[tbl] = 1; tbls[++ntbl] = tbl }
+            def[tbl, k] = $0; order[tbl, ++nk[tbl]] = k
+            next
+        }
+        FNR == 1 { tbl = "" }
+        {
+            line[++n] = $0
+            if (skipping) { drop[n] = 1; if ($0 ~ /\]/) skipping = 0; next }
+            if (is_header($0)) { tbl = table_of($0); has[tbl] = 1; anchor[tbl] = n; next }
+            k = key_of($0); if (k == "") next
+            anchor[tbl] = n
+            if ((tbl, k) in def) {
+                line[n] = def[tbl, k]; done[tbl, k] = 1
+                v = $0; sub(/^[^=]*=[ \t]*/, "", v)
+                if (v ~ /^\[/ && v !~ /\]/) skipping = 1
+            }
+        }
+        END {
+            for (i = 1; i <= ntbl; i++) {
+                t = tbls[i]; pend[t] = ""
+                for (j = 1; j <= nk[t]; j++) { k = order[t, j]; if (!((t, k) in done)) pend[t] = pend[t] def[t, k] "\n" }
+            }
+            if (pend[""] != "" && !("" in anchor)) { printf "%s", pend[""]; if (n > 0) print "" }
+            for (i = 1; i <= n; i++) {
+                if (!(i in drop)) print line[i]
+                for (t in anchor) if (anchor[t] == i && pend[t] != "") printf "%s", pend[t]
+            }
+            for (i = 1; i <= ntbl; i++) {
+                t = tbls[i]
+                if (t != "" && !(t in has) && pend[t] != "") printf "\n[%s]\n%s", t, pend[t]
+            }
+        }
+    ' "$1" "$target"
+}
+
+AS_NEED_CLAUDE=0
+AS_NEED_CODEX=0
+
+# Present when merging the defaults in would change nothing. Without jq the
+# Claude half can't be checked, so it counts as pending; the merge is a no-op
+# then anyway.
+detect_agent_settings() {
+    if [ ! -f "$CLAUDE_DEFAULTS" ] || [ ! -f "$CODEX_DEFAULTS" ]; then
+        DETAIL="$NO_SOURCES"
+        return 2
+    fi
+    AS_NEED_CLAUDE=0; AS_NEED_CODEX=0
+    if ! have jq || [ ! -s "$CLAUDE_SETTINGS" ] \
+       || ! jq -e --slurpfile d "$CLAUDE_DEFAULTS" '. == (. * $d[0])' "$CLAUDE_SETTINGS" >/dev/null 2>&1; then
+        AS_NEED_CLAUDE=1
+    fi
+    merge_codex_config "$CODEX_DEFAULTS" "$CODEX_CONFIG" | cmp -s - "$CODEX_CONFIG" 2>/dev/null || AS_NEED_CODEX=1
+
+    if [ "$AS_NEED_CLAUDE" -eq 0 ] && [ "$AS_NEED_CODEX" -eq 0 ]; then
+        DETAIL="Claude and Codex defaults set"
+        return 0
+    fi
+    local what=""
+    [ "$AS_NEED_CLAUDE" -eq 1 ] && what+="Claude settings.json, "
+    [ "$AS_NEED_CODEX" -eq 1 ]  && what+="Codex config.toml"
+    DETAIL="will merge defaults into ${what%, }"
+    return 1
+}
+
 # Two independent halves: the file, and ~/.zshrc sourcing it. Either can already
 # be in place on its own, so both are checked and only the missing half is done.
 PN_NEED_FILE=0
@@ -498,6 +603,45 @@ install_claude_statusline() {
         mv "$tmp" "$CLAUDE_SETTINGS"
         log_ok "statusLine added to $CLAUDE_SETTINGS"
     fi
+}
+
+install_npm_allow_scripts() {
+    load_nvm
+    local cur
+    cur="$(npm config get allow-scripts --location=user 2>/dev/null | tr -d ' ')"
+    case ",$cur," in *,agent-browser,*) return 0 ;; esac
+    backup_once "$HOME/.npmrc"
+    npm config set "allow-scripts=${cur:+$cur,}agent-browser" --location=user
+    log_ok "npm allow-scripts: ${cur:+$cur,}agent-browser"
+}
+
+# Our keys win; every other key the device has stays. Written with cat, not
+# mv, so the file keeps its permissions.
+install_agent_settings() {
+    have jq || { load_brew && brew install jq; }
+    local tmp
+    tmp="$(mktemp)"
+    if [ -s "$CLAUDE_SETTINGS" ]; then
+        jq --slurpfile d "$CLAUDE_DEFAULTS" '. * $d[0]' "$CLAUDE_SETTINGS" > "$tmp" \
+            || { rm -f "$tmp"; log_error "$CLAUDE_SETTINGS is not valid JSON — left untouched"; return 1; }
+    else
+        jq . "$CLAUDE_DEFAULTS" > "$tmp"
+    fi
+    if ! cmp -s "$tmp" "$CLAUDE_SETTINGS"; then
+        backup_once "$CLAUDE_SETTINGS"
+        mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+        cat "$tmp" > "$CLAUDE_SETTINGS"
+        log_ok "merged Claude defaults into $CLAUDE_SETTINGS"
+    fi
+
+    merge_codex_config "$CODEX_DEFAULTS" "$CODEX_CONFIG" > "$tmp"
+    if ! cmp -s "$tmp" "$CODEX_CONFIG"; then
+        backup_once "$CODEX_CONFIG"
+        mkdir -p "$(dirname "$CODEX_CONFIG")"
+        cat "$tmp" > "$CODEX_CONFIG"
+        log_ok "merged Codex defaults into $CODEX_CONFIG"
+    fi
+    rm -f "$tmp"
 }
 
 # The upstream registry is example paths, so it is emptied on the way in —

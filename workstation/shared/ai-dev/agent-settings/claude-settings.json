@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "defaultMode": "auto"
+  },
+  "enableWorkflows": false,
+  "workflowKeywordTriggerEnabled": false,
+  "feedbackDrafts": "off",
+  "promptSuggestionEnabled": false,
+  "awaySummaryEnabled": false,
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark",
+  "autoCompactEnabled": false,
+  "agentPushNotifEnabled": true,
+  "enabledPlugins": {
+    "warp@claude-code-warp": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-code-warp": {
+      "source": {
+        "source": "github",
+        "repo": "warpdotdev/claude-code-warp"
+      }
+    }
+  }
+}

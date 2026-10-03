@@ -6,9 +6,9 @@
 #   macos/ai-dev-setup-macos-standalone.sh  macOS, runs macos/ai-dev-setup-macos.sh
 #
 # Each bundle unpacks its payload in the same layout as this directory, so the
-# setup script resolves agent-instructions/, claude/ and its project navigator
-# through its own SCRIPT_DIR exactly as it does in a checkout, and stays
-# bundle-unaware.
+# setup script resolves agent-instructions/, agent-settings/, claude/ and its
+# project navigator through its own SCRIPT_DIR exactly as it does in a
+# checkout, and stays bundle-unaware.
 #
 # Output is byte-deterministic — rebuilding without a source change produces no
 # diff — so nothing emitted below may carry a timestamp, hostname or path.
@@ -30,6 +30,8 @@ LINUX_PAYLOAD=(
     agent-instructions/AGENTS.md
     agent-instructions/GEMINI.md
     claude/statusline-command.sh
+    agent-settings/claude-settings.json
+    agent-settings/codex-config.toml
 )
 MACOS_PAYLOAD=(
     macos/ai-dev-setup-macos.sh
@@ -38,6 +40,8 @@ MACOS_PAYLOAD=(
     agent-instructions/AGENTS.md
     agent-instructions/GEMINI.md
     claude/statusline-command.sh
+    agent-settings/claude-settings.json
+    agent-settings/codex-config.toml
 )
 
 # A payload line equal to this would close its heredoc early and corrupt the

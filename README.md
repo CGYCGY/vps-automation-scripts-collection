@@ -138,7 +138,7 @@ Installs Homebrew and the AI development toolchain.
     │   └── setup-lib.sh        # Phase runner every setup script uses
     └── linux/                  # Used by both servers and Linux workstations
         ├── swap/
-        │   ├── swap-configuration-module.sh # Swap setup script
+        │   ├── swap-setup.sh           # RAM-based swap file and tuning
         │   └── README.md
         └── tailscale/
             ├── tailscale-setup.sh  # Tailscale SSH + firewall (detects Oracle Cloud)

@@ -115,7 +115,7 @@ run_tailscale_generic() {
     echo ""
 
     if confirm_action "This will modify your SSH and firewall settings."; then
-        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-vps-setup.sh" "Tailscale Setup (Generic)"
+        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-setup.sh" "Tailscale Setup (Generic)"
     else
         echo -e "${YELLOW}Skipped.${NC}"
     fi
@@ -134,7 +134,7 @@ run_tailscale_oracle() {
     echo ""
 
     if confirm_action "This will modify your SSH and firewall settings."; then
-        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-vps-setup-oracle.sh" "Tailscale Setup (Oracle)"
+        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-setup.sh" "Tailscale Setup (Oracle)"
     else
         echo -e "${YELLOW}Skipped.${NC}"
     fi
@@ -282,9 +282,9 @@ run_full_setup() {
     echo -e "${GREEN}Step 2/3: Setting up Tailscale SSH...${NC}"
     echo ""
     if [[ "$is_oracle" == true ]]; then
-        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-vps-setup-oracle.sh" "Tailscale Setup (Oracle)"
+        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-setup.sh" "Tailscale Setup (Oracle)"
     else
-        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-vps-setup.sh" "Tailscale Setup (Generic)"
+        run_script "$SHARED_LINUX_DIR/tailscale/tailscale-setup.sh" "Tailscale Setup (Generic)"
     fi
 
     echo ""

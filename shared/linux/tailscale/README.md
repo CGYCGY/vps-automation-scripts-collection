@@ -1,150 +1,92 @@
-# Tailscale SSH Setup Scripts
+# Tailscale SSH Setup (Linux)
 
-Automated setup scripts for securing your VPS/server with Tailscale SSH. No more managing SSH keys!
+Puts a Linux server or workstation on your tailnet with Tailscale SSH, then
+locks SSH to the tailnet. Nobody manages SSH keys: Tailscale decides who gets
+in, using your tailnet policy.
 
-## Scripts
-
-| Script | Use Case |
-|--------|----------|
-| `tailscale-vps-setup.sh` | Generic VPS (DigitalOcean, Linode, Vultr, Hetzner, etc.) |
-| `tailscale-vps-setup-oracle.sh` | Oracle Cloud Infrastructure with OCI-specific handling |
+Set up the tailnet policy first. Follow the [tailnet guide](../../../docs/tailscale-tailnet.md),
+because tagging a server before the policy covers it cuts off Coolify.
 
 ## Quick Start
 
-### Generic VPS
 ```bash
-chmod +x tailscale-vps-setup.sh
-sudo ./tailscale-vps-setup.sh
+sudo ./tailscale-setup.sh
 ```
 
-### Oracle Cloud
+It is also run by `sudo ./server/setup.sh --tailscale` and `--full`.
+
+## What It Does
+
+| Phase | Steps |
+|-------|-------|
+| plan | Asks the machine's role, which ports to open, and whether to set a console password |
+| deps | Installs curl, ufw, jq and Tailscale |
+| auto | Writes the UFW rules, without turning UFW on yet |
+| interactive | Logs in with Tailscale SSH and the role's tags, sets the console password, then turns UFW on and SSH password login off |
+
+The lockdown only happens once Tailscale is connected, so a failed login can't
+lock you out.
+
+### Roles
+
+| Role | Tailscale tags | Ports opened by default |
+|------|----------------|-------------------------|
+| `dashboard` | `tag:vps`, `tag:coolify` | 22, 8000, 6001, 6002 from the tailnet |
+| `managed` | `tag:vps` | 22 from the tailnet; 80 and 443 from anywhere |
+| `workstation` | none | 22 from the tailnet |
+
+If Tailscale refuses the tags because the policy doesn't define them yet, the
+script logs in without tags and tells you to tag the machine in the admin
+console. A machine that is already logged in can't be retagged from the command
+line (`tailscale set` has no tag option), so the script tells you to tag it there too.
+
+### SSH Password Login
+
+The script writes `/etc/ssh/sshd_config.d/00-tailscale-ssh.conf`. Many cloud
+images ship `50-cloud-init.conf` with `PasswordAuthentication yes`. sshd uses
+the first value it reads, so a file sorting before it is the one that works;
+editing `sshd_config` itself has no effect.
+
+## Unattended Runs
+
+Every question can be answered up front, and `-y` takes the defaults for the rest:
+
 ```bash
-chmod +x tailscale-vps-setup-oracle.sh
-sudo ./tailscale-vps-setup-oracle.sh
+sudo MACHINE_ROLE=managed TS_TAILNET_PORTS="5432" ./tailscale-setup.sh -y
 ```
 
-## What These Scripts Do
+| Variable | Values |
+|----------|--------|
+| `MACHINE_ROLE` | `dashboard`, `managed`, `workstation` |
+| `TS_PUBLIC_WEB` | `yes` / `no`: open 80 and 443 to the internet |
+| `TS_PUBLIC_PORTS` | e.g. `"3000 5000/udp"`: more ports open to the internet |
+| `TS_TAILNET_PORTS` | e.g. `"5432"`: ports open to the tailnet only |
+| `TS_UFW_RESET` | `yes` / `no`: drop existing UFW rules first |
+| `TS_SET_PASSWORD` | `yes` / `no`: set a password for the provider's console |
+| `TS_AUTHKEY` | log in with an auth key instead of the browser |
 
-1. **Update system packages** (optional)
-2. **Install Tailscale VPN**
-3. **Start Tailscale** and authenticate via browser
-4. **Configure firewall**
-   - SSH restricted to Tailscale network only
-   - Optional HTTP/HTTPS ports
-   - Custom port configuration
-5. **Enable Tailscale SSH** (keyless authentication)
-6. **Disable SSH password authentication** (recommended)
-7. **Set up emergency console access**
-8. **Provide verification summary**
+## Docker Bypasses UFW
+
+Docker publishes container ports through its own iptables rules, before UFW
+sees the traffic. Coolify's 80, 443, 8000, 6001 and 6002 are therefore open to
+the internet whatever UFW says. Close the ones that shouldn't be public in your
+provider's firewall. On Oracle Cloud, that is the subnet's Security List.
 
 ## Supported Systems
 
-- **Ubuntu**: 22.04, 24.04 (LTS)
-- **Debian**: 11, 12
-- **Architectures**: ARM64 (aarch64) and x86_64 (amd64)
+- Ubuntu 22.04, 24.04 / Debian 11, 12, 13
+- ARM64 (aarch64) and x86_64 (amd64)
+- Oracle Cloud is detected automatically; the summary then gives Security List
+  steps, and the console password defaults to yes
 
-## Providers
+## Lost Access?
 
-| Provider | Script |
-|----------|--------|
-| DigitalOcean | Generic |
-| Linode | Generic |
-| Vultr | Generic |
-| Hetzner | Generic |
-| Contabo | Generic |
-| OVH | Generic |
-| Oracle Cloud | Oracle-specific |
-
-## Oracle Cloud Notes
-
-The Oracle version includes special handling for:
-- OCI Serial Console emergency access
-- Security List configuration guidance
-- iptables-based firewall (instead of UFW)
-
-**After running the Oracle script:**
-1. Navigate to: Networking > Virtual Cloud Networks > Security Lists
-2. Remove/restrict SSH (port 22) from 0.0.0.0/0
-3. Add HTTP/HTTPS rules if needed
-4. Set up Serial Console for emergency access
-
-## Security Features
-
-- Restricts SSH to Tailscale network only (100.x.x.x/8)
-- Disables password authentication
-- Enables Tailscale SSH for keyless auth
-- Preserves emergency console access
-- Color-coded output for clarity
-- Step-by-step verification
-
-## Tips & Best Practices
-
-### Use Tailscale ACLs for Team Access
-```json
-{
-  "ssh": [{
-    "action": "accept",
-    "src": ["user1@github", "user2@google"],
-    "dst": ["tag:production-servers"],
-    "users": ["deploy", "admin"]
-  }]
-}
-```
-
-### Tag Your Servers
-```bash
-sudo tailscale up --ssh --advertise-tags=tag:webserver
-```
-
-### Enable MagicDNS
-Access servers by name instead of IP:
-```bash
-ssh username@server-name
-```
-
-## Troubleshooting
-
-### Can't connect via Tailscale SSH?
-```bash
-# Check Tailscale status
-tailscale status
-
-# Verify both devices are in the same Tailnet
-tailscale status | grep "logged in"
-
-# Ensure Tailscale SSH is enabled
-sudo tailscale up --ssh
-```
-
-### Lost SSH access completely?
-
-**Oracle Cloud:**
-- Use Serial Console in OCI dashboard
-
-**Other VPS:**
-- Use provider's VNC/console access
-- Check provider's control panel
-
-### Verify firewall configuration
-```bash
-# UFW (Generic VPS)
-sudo ufw status verbose
-
-# iptables (Oracle)
-sudo iptables -L -n
-```
-
-## Important Notes
-
-- Review the script before running (good security practice)
-- Backup important data before making system changes
-- Set a strong password for emergency console access
-- Test Tailscale SSH before removing other access methods
-- Keep Tailscale updated for latest security patches
+- Use the provider's web console (Oracle Cloud: Serial Console). This is why
+  the script offers a console password.
+- `sudo tailscale status` shows whether the machine is connected.
+- `sudo ufw status verbose` shows the firewall rules.
 
 ## Resources
 
-- [Tailscale Docs](https://tailscale.com/kb/)
-- [Tailscale SSH Guide](https://tailscale.com/kb/1193/tailscale-ssh/)
-- [Tailscale ACLs](https://tailscale.com/kb/1018/acls/)
-- [UFW Documentation](https://help.ubuntu.com/community/UFW)
+- [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
+- [Tailnet policy file](https://tailscale.com/kb/1018/acls)

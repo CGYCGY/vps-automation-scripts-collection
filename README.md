@@ -91,7 +91,7 @@ Interactive tool for managing PostgreSQL databases, users, and permissions.
 
 ### Linux Workstation
 ```bash
-sudo ./shared/linux/tailscale/tailscale-vps-setup.sh
+sudo MACHINE_ROLE=workstation ./shared/linux/tailscale/tailscale-setup.sh
 ./workstation/setup.sh
 ```
 Secures remote access with Tailscale, then installs the AI development toolchain for the normal user.
@@ -134,13 +134,14 @@ Installs Homebrew and the AI development toolchain.
 ├── docs/
 │   └── tailscale-tailnet.md    # Tailnet tags and SSH policy
 └── shared/
+    ├── lib/
+    │   └── setup-lib.sh        # Phase runner every setup script uses
     └── linux/                  # Used by both servers and Linux workstations
         ├── swap/
         │   ├── swap-configuration-module.sh # Swap setup script
         │   └── README.md
         └── tailscale/
-            ├── tailscale-vps-setup.sh        # Generic VPS setup
-            ├── tailscale-vps-setup-oracle.sh # Oracle Cloud setup
+            ├── tailscale-setup.sh  # Tailscale SSH + firewall (detects Oracle Cloud)
             └── README.md
 ```
 

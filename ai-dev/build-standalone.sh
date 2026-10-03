@@ -1,27 +1,39 @@
 #!/usr/bin/env bash
-# Regenerates ai-dev-standalone.sh: the whole setup as one self-extracting file,
-# for devices where fetching the repository is not worth the trouble.
+# Regenerates the standalone bundles — the whole setup as one self-extracting
+# file, for devices where fetching the repository is not worth the trouble:
 #
-# The bundle unpacks its payload beside a copy of ai-dev-setup.sh, so that script
-# resolves agent-instructions/ and project-navigator.sh through its own
-# SCRIPT_DIR exactly as it does in a checkout, and stays bundle-unaware.
+#   ai-dev-standalone.sh                    Linux, runs ai-dev-setup.sh
+#   macos/ai-dev-setup-macos-standalone.sh  macOS, runs macos/ai-dev-setup-macos.sh
+#
+# Each bundle unpacks its payload in the same layout as this directory, so the
+# setup script resolves agent-instructions/, claude/ and its project navigator
+# through its own SCRIPT_DIR exactly as it does in a checkout, and stays
+# bundle-unaware.
 #
 # Output is byte-deterministic — rebuilding without a source change produces no
 # diff — so nothing emitted below may carry a timestamp, hostname or path.
 #
-#   ./build-standalone.sh          regenerate ai-dev-standalone.sh
-#   ./build-standalone.sh --check  exit non-zero if the committed copy is stale
+#   ./build-standalone.sh          regenerate both bundles
+#   ./build-standalone.sh --check  exit non-zero if either committed copy is stale
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT="${SCRIPT_DIR}/ai-dev-standalone.sh"
 
-# Everything ai-dev-setup.sh reads from its own directory at run time. README.md
-# is deliberately absent: it documents the repository, not the install.
-PAYLOAD=(
+# Everything each setup script reads from its own directory at run time, entry
+# script first. README.md is deliberately absent: it documents the repository,
+# not the install.
+LINUX_PAYLOAD=(
     ai-dev-setup.sh
     project-navigator.sh
+    agent-instructions/CLAUDE.md
+    agent-instructions/AGENTS.md
+    agent-instructions/GEMINI.md
+    claude/statusline-command.sh
+)
+MACOS_PAYLOAD=(
+    macos/ai-dev-setup-macos.sh
+    macos/project-navigator.zsh
     agent-instructions/CLAUDE.md
     agent-instructions/AGENTS.md
     agent-instructions/GEMINI.md
@@ -36,7 +48,7 @@ die() { printf 'build-standalone: %s\n' "$1" >&2; exit 1; }
 
 check_sources() {
     local f path
-    for f in "${PAYLOAD[@]}"; do
+    for f in "$@"; do
         path="${SCRIPT_DIR}/${f}"
         [ -f "$path" ] || die "missing source: $f"
         if grep -qxF "$DELIM" "$path"; then
@@ -49,10 +61,22 @@ check_sources() {
     done
 }
 
+# $1 names the platform in the header line; the rest is the payload, entry
+# script first. Unpack directories come from the payload paths, in order.
 emit() {
+    local title="$1"; shift
+    local entry="$1" f d dirs=""
+    for f in "$@"; do
+        d="${f%/*}"
+        [ "$d" = "$f" ] && continue
+        case " $dirs " in *" $d "*) ;; *) dirs="${dirs:+$dirs }$d" ;; esac
+    done
+
     cat <<'HEADER'
 #!/usr/bin/env bash
-# AI development toolchain setup, bundled as a single self-extracting file.
+HEADER
+    printf '# %s, bundled as a single self-extracting file.\n' "$title"
+    cat <<'HEADER'
 #
 # GENERATED FILE — do not edit. Change the sources in the repository's ai-dev/
 # directory, then run ./build-standalone.sh to regenerate this.
@@ -64,48 +88,60 @@ set -euo pipefail
 
 AI_DEV_TMP="$(mktemp -d)"
 trap 'rm -rf "$AI_DEV_TMP"' EXIT
-mkdir -p "$AI_DEV_TMP/agent-instructions" "$AI_DEV_TMP/claude"
 HEADER
+    printf 'mkdir -p'
+    for d in $dirs; do printf ' "$AI_DEV_TMP/%s"' "$d"; done
+    printf '\n'
 
-    local f
-    for f in "${PAYLOAD[@]}"; do
+    for f in "$@"; do
         printf '\ncat > "$AI_DEV_TMP/%s" <<'\''%s'\''\n' "$f" "$DELIM"
         cat "${SCRIPT_DIR}/${f}"
         printf '%s\n' "$DELIM"
     done
 
+    printf '\nchmod +x "$AI_DEV_TMP/%s"\n' "$entry"
     cat <<'FOOTER'
-
-chmod +x "$AI_DEV_TMP/ai-dev-setup.sh"
 # Run rather than exec: exec would drop the trap that cleans the unpacked copy.
-"$AI_DEV_TMP/ai-dev-setup.sh" "$@"
 FOOTER
+    printf '"$AI_DEV_TMP/%s" "$@"\n' "$entry"
+}
+
+# $1 is the output path relative to this directory; the rest goes to emit.
+build() {
+    local output="${SCRIPT_DIR}/$1"; shift
+    local title="$1"; shift
+    check_sources "$@"
+
+    local tmp
+    tmp="$(mktemp)"
+    emit "$title" "$@" > "$tmp"
+    bash -n "$tmp" || { rm -f "$tmp"; die "generated ${output##*/} is not valid bash"; }
+
+    if [ "$mode" = "check" ]; then
+        if cmp -s "$tmp" "$output"; then
+            rm -f "$tmp"
+            echo "${output##*/} is up to date"
+        else
+            rm -f "$tmp"
+            stale=1
+            printf 'build-standalone: %s is out of date — run ./build-standalone.sh\n' "${output##*/}" >&2
+        fi
+    else
+        chmod 755 "$tmp"
+        mv "$tmp" "$output"
+        printf 'wrote %s (%s bytes)\n' "${output##*/}" "$(wc -c < "$output")"
+    fi
 }
 
 mode="build"
 case "${1:-}" in
     "") ;;
     --check) mode="check" ;;
-    -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
 esac
 
-check_sources
-
-tmp="$(mktemp)"
-trap 'rm -f "$tmp"' EXIT
-emit > "$tmp"
-bash -n "$tmp" || die "generated bundle is not valid bash"
-
-if [ "$mode" = "check" ]; then
-    if cmp -s "$tmp" "$OUTPUT"; then
-        echo "ai-dev-standalone.sh is up to date"
-    else
-        die "ai-dev-standalone.sh is out of date — run ./build-standalone.sh"
-    fi
-else
-    chmod 755 "$tmp"
-    mv "$tmp" "$OUTPUT"
-    trap - EXIT
-    printf 'wrote %s (%s bytes)\n' "${OUTPUT##*/}" "$(wc -c < "$OUTPUT")"
-fi
+stale=0
+build ai-dev-standalone.sh "AI development toolchain setup" "${LINUX_PAYLOAD[@]}"
+build macos/ai-dev-setup-macos-standalone.sh "AI development toolchain setup for macOS" "${MACOS_PAYLOAD[@]}"
+[ "$stale" -eq 0 ] || exit 1

@@ -70,17 +70,19 @@ The three instruction files intentionally remain separate so each tool can use i
 
 ## Regenerating the Standalone File
 
-`ai-dev-standalone.sh` is generated. The sources stay the truth:
-`ai-dev-setup.sh`, `project-navigator.sh`, `claude/statusline-command.sh` and
-the three files under `agent-instructions/`. After editing any of them, rebuild:
+`ai-dev-standalone.sh` and `macos/ai-dev-setup-macos-standalone.sh` are
+generated. The sources stay the truth: `ai-dev-setup.sh`, `project-navigator.sh`,
+`macos/ai-dev-setup-macos.sh`, `macos/project-navigator.zsh`,
+`claude/statusline-command.sh` and the three files under `agent-instructions/`.
+After editing any of them, rebuild both:
 
 ```bash
 ./build-standalone.sh          # regenerate
 ./build-standalone.sh --check  # fail if the committed copy is stale
 ```
 
-Commit the regenerated file with the change that caused it, or the published
-one-liner keeps installing the previous version of the instructions.
+Commit the regenerated files with the change that caused them, or the published
+one-liners keep installing the previous version of the instructions.
 
 The build is deterministic — identical sources produce a byte-identical file,
 and nothing timestamped goes into it — so rebuilding without a source change

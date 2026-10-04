@@ -11,7 +11,8 @@ or none](#the-list).
 ./workstation/shared/projects/projects.sh -y         # take the defaults
 ```
 
-It also runs last in the [Mac setup](../../macos/README.md), after the GitHub
+It also runs late in the [Mac](../../macos/README.md) and [Linux](../../linux/README.md)
+workstation setups, after the GitHub
 key is on your account. There it is optional: one question, "Set up your
 projects?". Run alone, it doesn't ask.
 
@@ -104,7 +105,7 @@ with a time limit. Each repo gets a row:
 | Result | Meaning |
 |--------|---------|
 | `ok` | Reachable |
-| key not on the git host | Your SSH key isn't on the account. `../../macos/ssh.sh` makes one |
+| key not on the git host | Your SSH key isn't on the account. the workstation `ssh.sh` module makes one |
 | no access, or a typo | GitHub says "not found" for a private repo you can't see |
 | unreachable | Anything else, with the first line of git's error |
 
@@ -149,7 +150,7 @@ list stay, and the previous file is kept as `.bak`. Open a new shell to use them
 
 | Variable | Values |
 |----------|--------|
-| `PROJECTS_SETUP` | `yes` / `no`: set up projects. Asked only by the Mac setup |
+| `PROJECTS_SETUP` | `yes` / `no`: set up projects. Asked only when run from the workstation setup |
 | `PROJECTS_SOURCE` | URL, file path or JSON, when there is no list yet |
 | `PROJECTS_ROOT` | where projects live, when the list has no root (default `~/projects`) |
 | `PROJECTS_FILE` | the list's location (default: `projects.json` beside the script) |

@@ -63,10 +63,11 @@ and cost) and points `statusLine` in `~/.claude/settings.json` at it. The rest o
 replaced.
 
 It merges the author's agent settings from `agent-settings/` into
-`~/.claude/settings.json` and `~/.codex/config.toml`: permission mode, theme,
-plugins, the Codex status line and similar. The tracked keys win; every other
+`~/.claude/settings.json`, `~/.codex/config.toml` and `~/.pi/agent/settings.json`:
+permission mode, theme, plugins, the Codex status line, pi's compaction and
+telemetry, and similar. The tracked keys win; every other
 key the machine has is kept, including Codex's own `[projects."…"]` tables.
-Model and effort are deliberately left out, because they change too often.
+Model, effort and pi's provider are deliberately left out, because they change too often.
 
 Before agent-browser installs, `agent-browser` is added to npm's
 `allow-scripts` list in `~/.npmrc`. npm 11 skips the install scripts of global
@@ -84,7 +85,7 @@ The three instruction files intentionally remain separate so each tool can use i
 generated. The sources stay the truth: `ai-dev-setup.sh`, `project-navigator.sh`,
 `macos/ai-dev-setup-macos.sh`, `macos/project-navigator.zsh`,
 `claude/statusline-command.sh`, the three files under `agent-instructions/` and
-the two under `agent-settings/`.
+the three under `agent-settings/`.
 After editing any of them, rebuild both:
 
 ```bash

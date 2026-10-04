@@ -89,6 +89,8 @@ CLAUDE_SETTINGS="$HOME/.claude/settings.json"
 CLAUDE_DEFAULTS="${SCRIPT_DIR}/../agent-settings/claude-settings.json"
 CODEX_DEFAULTS="${SCRIPT_DIR}/../agent-settings/codex-config.toml"
 CODEX_CONFIG="$HOME/.codex/config.toml"
+PI_DEFAULTS="${SCRIPT_DIR}/../agent-settings/pi-settings.json"
+PI_SETTINGS="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/settings.json"
 
 # Both of the above read files that sit beside this script in a checkout or in
 # the standalone bundle. A lone copy of this script has neither, and the survey
@@ -415,29 +417,33 @@ merge_codex_config() {
 
 AS_NEED_CLAUDE=0
 AS_NEED_CODEX=0
+AS_NEED_PI=0
 
-# Present when merging the defaults in would change nothing. Without jq the
-# Claude half can't be checked, so it counts as pending; the merge is a no-op
-# then anyway.
+# True when merging the JSON defaults $1 into $2 would change nothing. Without
+# jq this can't be checked, so it counts as pending; the merge is a no-op then.
+json_defaults_set() {
+    have jq && [ -s "$2" ] && jq -e --slurpfile d "$1" '. == (. * $d[0])' "$2" >/dev/null 2>&1
+}
+
+# Present when merging the defaults in would change nothing.
 detect_agent_settings() {
-    if [ ! -f "$CLAUDE_DEFAULTS" ] || [ ! -f "$CODEX_DEFAULTS" ]; then
+    if [ ! -f "$CLAUDE_DEFAULTS" ] || [ ! -f "$CODEX_DEFAULTS" ] || [ ! -f "$PI_DEFAULTS" ]; then
         DETAIL="$NO_SOURCES"
         return 2
     fi
-    AS_NEED_CLAUDE=0; AS_NEED_CODEX=0
-    if ! have jq || [ ! -s "$CLAUDE_SETTINGS" ] \
-       || ! jq -e --slurpfile d "$CLAUDE_DEFAULTS" '. == (. * $d[0])' "$CLAUDE_SETTINGS" >/dev/null 2>&1; then
-        AS_NEED_CLAUDE=1
-    fi
+    AS_NEED_CLAUDE=0; AS_NEED_CODEX=0; AS_NEED_PI=0
+    json_defaults_set "$CLAUDE_DEFAULTS" "$CLAUDE_SETTINGS" || AS_NEED_CLAUDE=1
+    json_defaults_set "$PI_DEFAULTS" "$PI_SETTINGS" || AS_NEED_PI=1
     merge_codex_config "$CODEX_DEFAULTS" "$CODEX_CONFIG" | cmp -s - "$CODEX_CONFIG" 2>/dev/null || AS_NEED_CODEX=1
 
-    if [ "$AS_NEED_CLAUDE" -eq 0 ] && [ "$AS_NEED_CODEX" -eq 0 ]; then
-        DETAIL="Claude and Codex defaults set"
+    if [ "$AS_NEED_CLAUDE" -eq 0 ] && [ "$AS_NEED_CODEX" -eq 0 ] && [ "$AS_NEED_PI" -eq 0 ]; then
+        DETAIL="Claude, Codex and pi defaults set"
         return 0
     fi
     local what=""
     [ "$AS_NEED_CLAUDE" -eq 1 ] && what+="Claude settings.json, "
-    [ "$AS_NEED_CODEX" -eq 1 ]  && what+="Codex config.toml"
+    [ "$AS_NEED_CODEX" -eq 1 ]  && what+="Codex config.toml, "
+    [ "$AS_NEED_PI" -eq 1 ]     && what+="pi settings.json"
     DETAIL="will merge defaults into ${what%, }"
     return 1
 }
@@ -633,24 +639,32 @@ install_npm_allow_scripts() {
 }
 
 # Our keys win; every other key the device has stays. Written with cat, not
-# mv, so the file keeps its permissions.
-install_agent_settings() {
-    have jq || { load_brew && brew install jq; }
+# mv, so the file keeps its permissions. $1 defaults, $2 target, $3 agent name.
+merge_json_defaults() {
     local tmp
     tmp="$(mktemp)"
-    if [ -s "$CLAUDE_SETTINGS" ]; then
-        jq --slurpfile d "$CLAUDE_DEFAULTS" '. * $d[0]' "$CLAUDE_SETTINGS" > "$tmp" \
-            || { rm -f "$tmp"; log_error "$CLAUDE_SETTINGS is not valid JSON — left untouched"; return 1; }
+    if [ -s "$2" ]; then
+        jq --slurpfile d "$1" '. * $d[0]' "$2" > "$tmp" \
+            || { rm -f "$tmp"; log_error "$2 is not valid JSON — left untouched"; return 1; }
     else
-        jq . "$CLAUDE_DEFAULTS" > "$tmp"
+        jq . "$1" > "$tmp"
     fi
-    if ! cmp -s "$tmp" "$CLAUDE_SETTINGS"; then
-        backup_once "$CLAUDE_SETTINGS"
-        mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
-        cat "$tmp" > "$CLAUDE_SETTINGS"
-        log_ok "merged Claude defaults into $CLAUDE_SETTINGS"
+    if ! cmp -s "$tmp" "$2"; then
+        backup_once "$2"
+        mkdir -p "$(dirname "$2")"
+        cat "$tmp" > "$2"
+        log_ok "merged $3 defaults into $2"
     fi
+    rm -f "$tmp"
+}
 
+install_agent_settings() {
+    have jq || { load_brew && brew install jq; }
+    merge_json_defaults "$CLAUDE_DEFAULTS" "$CLAUDE_SETTINGS" Claude || return 1
+    merge_json_defaults "$PI_DEFAULTS" "$PI_SETTINGS" pi || return 1
+
+    local tmp
+    tmp="$(mktemp)"
     merge_codex_config "$CODEX_DEFAULTS" "$CODEX_CONFIG" > "$tmp"
     if ! cmp -s "$tmp" "$CODEX_CONFIG"; then
         backup_once "$CODEX_CONFIG"
@@ -1349,6 +1363,20 @@ status_line = ["model-with-reasoning", "run-state", "context-window-size", "cont
 status_line_use_colors = true
 show_tooltips = false
 screen_reader_detection_done = true
+AI_DEV_PAYLOAD_EOF
+
+cat > "$AI_DEV_TMP/agent-settings/pi-settings.json" <<'AI_DEV_PAYLOAD_EOF'
+{
+  "compaction": {
+    "enabled": false
+  },
+  "enableInstallTelemetry": false,
+  "treeFilterMode": "all",
+  "theme": "dark",
+  "terminal": {
+    "showTerminalProgress": true
+  }
+}
 AI_DEV_PAYLOAD_EOF
 
 chmod +x "$AI_DEV_TMP/macos/ai-dev-setup-macos.sh"

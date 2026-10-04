@@ -1,0 +1,11 @@
+{
+  "compaction": {
+    "enabled": false
+  },
+  "enableInstallTelemetry": false,
+  "treeFilterMode": "all",
+  "theme": "dark",
+  "terminal": {
+    "showTerminalProgress": true
+  }
+}

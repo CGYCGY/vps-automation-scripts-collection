@@ -32,6 +32,7 @@ LINUX_PAYLOAD=(
     claude/statusline-command.sh
     agent-settings/claude-settings.json
     agent-settings/codex-config.toml
+    agent-settings/pi-settings.json
 )
 MACOS_PAYLOAD=(
     macos/ai-dev-setup-macos.sh
@@ -42,6 +43,7 @@ MACOS_PAYLOAD=(
     claude/statusline-command.sh
     agent-settings/claude-settings.json
     agent-settings/codex-config.toml
+    agent-settings/pi-settings.json
 )
 
 # A payload line equal to this would close its heredoc early and corrupt the

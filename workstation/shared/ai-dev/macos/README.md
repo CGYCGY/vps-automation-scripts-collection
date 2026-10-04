@@ -50,7 +50,7 @@ asks for your password once so Homebrew can install.
 | `agent-browser` | `npm i -g agent-browser` followed by `agent-browser install` (Chrome for Testing) |
 | `agent-instructions` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` from `../agent-instructions` to `~/.claude`, `~/.codex`, `~/.gemini` |
 | `claude-statusline` | `../claude/statusline-command.sh` to `~/.claude`, plus a `statusLine` entry in `settings.json` when it has none; `jq` is installed with brew when missing |
-| `agent-settings` | Merges `../agent-settings/` into `~/.claude/settings.json` (jq) and `~/.codex/config.toml`; the tracked keys win, other keys stay, model and effort are not set |
+| `agent-settings` | Merges `../agent-settings/` into `~/.claude/settings.json`, `~/.pi/agent/settings.json` (jq) and `~/.codex/config.toml`; the tracked keys win, other keys stay, model and effort are not set |
 | `aliases` | `cc`, `aa`, `pa`, `upd`, `dc`, `jj`, added to `~/.zshrc` |
 | `project-navigator` | The zsh `cdp` from [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils), installed to `~/.zsh/project-navigator.zsh` |
 

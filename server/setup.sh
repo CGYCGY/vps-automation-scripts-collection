@@ -23,6 +23,9 @@ Setup (needs sudo):
   --coolify-remote  Coolify as a managed server, without asking the role
   --swap            Swap only
 
+Status (sudo optional; without it, some checks say they need it):
+  --status          Survey swap, Tailscale and Coolify without changing anything
+
 Tools (no sudo needed):
   --minio           MinIO migration tool
   --minio-users     MinIO user & bucket manager
@@ -59,6 +62,7 @@ run_choice() {
         --coolify|3)     setup coolify ;;
         --coolify-remote) MACHINE_ROLE=managed; export MACHINE_ROLE; setup coolify ;;
         --swap|4)        setup swap ;;
+        --status)        status_modules "$SWAP" "$TAILSCALE" "$COOLIFY" ;;
         --minio|5)       tool minio/minio_migration.sh ;;
         --minio-users|6) tool minio/minio_user_bucket_manager.sh ;;
         --postgres|7)    tool postgres/postgres_manager.sh ;;

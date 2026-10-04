@@ -200,6 +200,28 @@ jsonc_to_json() {
 
 jsonc_valid() { jsonc_to_json "$1" | jq -e . >/dev/null 2>&1; }
 
+# --- linux ---------------------------------------------------------------------
+
+is_root() { [ "$(id -u)" -eq 0 ]; }
+
+# dpkg-query, not `have`: ufw and sshd live in /usr/sbin, outside a normal
+# user's PATH on Debian.
+pkg_installed() { [ "$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null)" = "install ok installed" ]; }
+
+missing_pkgs() {
+    local p out=""
+    for p in "$@"; do pkg_installed "$p" || out="$out $p"; done
+    echo "${out# }"
+}
+
+service_up() { systemctl is-enabled --quiet "$1" 2>/dev/null && systemctl is-active --quiet "$1"; }
+
+# sed, not jq: --status runs before deps has installed jq.
+ts_state() {
+    tailscale status --json 2>/dev/null |
+        sed -n 's/.*"BackendState": *"\([A-Za-z]*\)".*/\1/p' | head -1
+}
+
 # --- notes for the summary -----------------------------------------------------
 
 # note "text": collected in any phase, printed by the menu's summary at the end.

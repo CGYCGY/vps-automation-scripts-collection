@@ -15,7 +15,7 @@ POLICY_GUIDE="docs/tailscale-tailnet.md"
 
 module_help() {
     cat <<EOF
-Usage: sudo $0 [-y] [--phase plan|deps|auto|interactive|summary]
+Usage: sudo $0 [-y] [--status] [--phase plan|deps|auto|interactive|summary]
 
 Answers can be given up front as environment variables:
   MACHINE_ROLE      dashboard | managed | workstation
@@ -42,18 +42,35 @@ role_tags() {
         *)         echo "" ;;
     esac
 }
-
-ts_state() {
-    tailscale status --json 2>/dev/null | jq -r '.BackendState // empty' 2>/dev/null
-}
+ts_ssh_on() { tailscale debug prefs 2>/dev/null | grep -q '"RunSSH": true'; }
 
 ts_tags() {
     tailscale status --json 2>/dev/null | jq -r '(.Self.Tags // []) | sort | join(",")' 2>/dev/null
 }
 
 sorted_tags() { echo "$1" | tr ',' '\n' | sort | paste -sd, -; }
-
 ufw_active() { ufw status 2>/dev/null | grep -q "Status: active"; }
+
+# `show added` lists rules whether or not UFW is on. Both need root.
+ufw_rules() { ufw show added 2>/dev/null; }
+ufw_tailnet_ssh() { ufw_rules | grep -q "allow from $TAILNET_V4 to any port 22 proto tcp"; }
+# The rules lock_down deletes.
+ufw_public_ssh() { ufw_rules | grep -qE "^ufw allow (22/tcp|22|OpenSSH)( |$)"; }
+
+ufw_defaults_set() {
+    grep -qx 'DEFAULT_INPUT_POLICY="DROP"' /etc/default/ufw 2>/dev/null &&
+        grep -qx 'DEFAULT_OUTPUT_POLICY="ACCEPT"' /etc/default/ufw
+}
+
+sshd_installed() { [ -f /etc/ssh/sshd_config ]; }
+
+# sshd -T prints the effective config, drop-ins included. Needs root.
+sshd_value() { sshd -T 2>/dev/null | awk -v k="$1" '$1 == k {print $2}'; }
+
+password_login_off() {
+    [ "$(sshd_value passwordauthentication)" = no ] &&
+        [ "$(sshd_value kbdinteractiveauthentication)" = no ]
+}
 
 user_has_password() {
     # passwd -S field 2: P = usable password, L = locked, NP = none
@@ -61,18 +78,22 @@ user_has_password() {
 }
 
 ufw_allow_ports() {
-    local from="$1" ports="$2" comment="$3" p
+    local from="$1" ports="$2" comment="$3" p out
     for p in $ports; do
         case "$p" in
             */*) ;;
             *) p="$p/tcp" ;;
         esac
         if [ "$from" = any ]; then
-            ufw allow "$p" comment "$comment" >/dev/null
+            out="$(ufw allow "$p" comment "$comment")"
         else
-            ufw allow from "$from" to any port "${p%/*}" proto "${p#*/}" comment "$comment" >/dev/null
+            out="$(ufw allow from "$from" to any port "${p%/*}" proto "${p#*/}" comment "$comment")"
         fi
-        log_ok "UFW: $p from $from"
+        # ufw itself detects an existing rule and says "Skipping adding existing rule".
+        case "$out" in
+            *"Rule added"*|*"Rule updated"*) log_ok "UFW: $p from $from" ;;
+            *) log_ok "UFW: $p from $from already allowed" ;;
+        esac
     done
 }
 
@@ -99,6 +120,77 @@ ask_ports() {
         log_warn "Use port numbers, optionally with /tcp or /udp, separated by spaces"
         unset "$var"
     done
+}
+
+module_status() {
+    local missing state tags user pw_state
+    missing="$(missing_pkgs curl ufw jq)"
+    if [ -z "$missing" ]; then status_row ts-packages present "curl, ufw, jq"
+    else status_row ts-packages missing "will apt install $missing"; fi
+
+    if ! have tailscale; then
+        status_row tailscale missing "will install from tailscale.com/install.sh"
+        status_row tailscaled missing "comes with the install"
+        status_row ts-login missing "will log in (browser link, or TS_AUTHKEY)"
+        status_row ts-ssh missing "turned on at login"
+    else
+        status_row tailscale present "$(tailscale version 2>/dev/null | head -1)"
+        if service_up tailscaled; then status_row tailscaled present "enabled and running"
+        else status_row tailscaled missing "will enable and start it"; fi
+
+        state="$(ts_state)"
+        case "$state" in
+            Running)
+                if ! have jq; then
+                    status_row ts-login present "connected as $(tailscale ip -4 2>/dev/null | head -1)"
+                else
+                    tags="$(ts_tags || true)"
+                    if [ -n "$(role_tags)" ] && [ "$tags" != "$(sorted_tags "$(role_tags)")" ]; then
+                        status_row ts-login partial "connected, tags: ${tags:-none}; $MACHINE_ROLE wants $(role_tags), set in the admin console"
+                    else
+                        status_row ts-login present "connected as $(tailscale ip -4 2>/dev/null | head -1), tags: ${tags:-none}"
+                    fi
+                fi
+                ;;
+            NeedsLogin|NoState|"") status_row ts-login missing "will log in (browser link, or TS_AUTHKEY)" ;;
+            *) status_row ts-login partial "$state; bring it up with: sudo tailscale up" ;;
+        esac
+
+        if ts_ssh_on; then status_row ts-ssh present "Tailscale SSH on"
+        elif ! tailscale debug prefs >/dev/null 2>&1; then status_row ts-ssh unknown "can't read Tailscale's prefs; try with sudo"
+        else status_row ts-ssh missing "turned on at login"; fi
+    fi
+
+    if ! pkg_installed ufw; then
+        status_row ufw-rules missing "will allow SSH from $TAILNET_V4, plus the chosen ports"
+        status_row ssh-lockdown missing "UFW turns on once you confirm Tailscale SSH works"
+    elif ! is_root; then
+        status_row ufw-rules unknown "needs sudo to check"
+        status_row ssh-lockdown unknown "needs sudo to check"
+    else
+        if ufw_tailnet_ssh; then status_row ufw-rules present "SSH allowed from $TAILNET_V4"
+        else status_row ufw-rules missing "will allow SSH from $TAILNET_V4, plus the chosen ports"; fi
+        if ! ufw_active; then
+            status_row ssh-lockdown missing "UFW off; turns on once you confirm Tailscale SSH works"
+        elif ufw_public_ssh; then
+            status_row ssh-lockdown partial "UFW on, SSH still open to anyone until you confirm Tailscale SSH works"
+        else
+            status_row ssh-lockdown present "UFW on, no public SSH rule"
+        fi
+    fi
+
+    if ! sshd_installed; then status_row ssh-password skipped "no OpenSSH server"
+    elif ! is_root; then status_row ssh-password unknown "needs sudo to check"
+    elif password_login_off; then status_row ssh-password present "password login off"
+    else status_row ssh-password missing "turned off with the lock-down"; fi
+
+    user="$(invoking_user)"
+    pw_state="$(passwd -S "$user" 2>/dev/null | awk '{print $2}')"
+    case "$pw_state" in
+        P)  status_row console-password present "$user has a password" ;;
+        "") status_row console-password unknown "needs sudo to check" ;;
+        *)  status_row console-password missing "$user has none; the setup offers to set one for the provider's console" ;;
+    esac
 }
 
 module_plan() {
@@ -130,10 +222,17 @@ module_plan() {
 
 module_deps() {
     log_step "Tailscale: packages"
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq curl ufw jq >/dev/null
-    log_ok "curl, ufw, jq"
+    local missing
+    missing="$(missing_pkgs curl ufw jq)"
+    if [ -z "$missing" ]; then
+        log_ok "curl, ufw, jq already installed"
+    else
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        # shellcheck disable=SC2086
+        apt-get install -y -qq $missing >/dev/null
+        log_ok "Installed $missing"
+    fi
 
     if have tailscale; then
         log_ok "Tailscale already installed ($(tailscale version | head -1))"
@@ -146,7 +245,11 @@ module_deps() {
         rm -f "$installer"
         log_ok "Tailscale installed"
     fi
-    systemctl enable --now tailscaled >/dev/null 2>&1 || true
+    if service_up tailscaled; then
+        log_ok "tailscaled already enabled and running"
+    else
+        systemctl enable --now tailscaled >/dev/null 2>&1 || true
+    fi
 }
 
 configure_ufw() {
@@ -154,8 +257,13 @@ configure_ufw() {
         ufw --force reset >/dev/null
         log_ok "UFW rules reset"
     fi
-    ufw default deny incoming >/dev/null
-    ufw default allow outgoing >/dev/null
+    if ufw_defaults_set; then
+        log_ok "UFW already denies incoming, allows outgoing by default"
+    else
+        ufw default deny incoming >/dev/null
+        ufw default allow outgoing >/dev/null
+        log_ok "UFW: deny incoming, allow outgoing by default"
+    fi
 
     ufw_allow_ports "$TAILNET_V4" 22 "SSH from Tailscale"
     if [ "$MACHINE_ROLE" = dashboard ]; then
@@ -194,8 +302,12 @@ ts_login() {
 
     case "$state" in
         Running)
-            tailscale set --ssh
-            log_ok "Already logged in; Tailscale SSH on"
+            if ts_ssh_on; then
+                log_ok "Already logged in; Tailscale SSH already on"
+            else
+                tailscale set --ssh
+                log_ok "Already logged in; Tailscale SSH on"
+            fi
             ts_check_tags "$tags"
             return 0
             ;;
@@ -229,6 +341,12 @@ ts_login() {
     fi
 }
 
+# Nothing left for lock_down to close or reset, so nothing to confirm.
+already_locked() {
+    [ "${TS_UFW_RESET:-no}" != yes ] && ufw_active && ufw_defaults_set &&
+        ! ufw_public_ssh && { ! sshd_installed || password_login_off; }
+}
+
 # Lock-down closes every other way in, so make sure this one works first: a
 # root-only VPS that ended up untagged, for example, has no rule letting root in.
 access_confirmed() {
@@ -252,12 +370,29 @@ lock_down() {
     log_step "Tailscale: locking SSH to the tailnet"
     ufw_active && configure_ufw
     local rule
-    for rule in 22/tcp 22 OpenSSH; do
-        ufw delete allow "$rule" >/dev/null 2>&1 || true
-    done
-    ufw --force enable >/dev/null
-    log_ok "UFW on; SSH only from $TAILNET_V4"
+    if ufw_public_ssh; then
+        for rule in 22/tcp 22 OpenSSH; do
+            ufw delete allow "$rule" >/dev/null 2>&1 || true
+        done
+        log_ok "UFW: public SSH rules removed"
+    else
+        log_ok "UFW: no public SSH rule"
+    fi
+    if ufw_active; then
+        log_ok "UFW already on; SSH only from $TAILNET_V4"
+    else
+        ufw --force enable >/dev/null
+        log_ok "UFW on; SSH only from $TAILNET_V4"
+    fi
 
+    if ! sshd_installed; then
+        log_ok "No OpenSSH server, so no password login to turn off"
+        return 0
+    fi
+    if password_login_off; then
+        log_ok "SSH password login already off"
+        return 0
+    fi
     if grep -qiE '^[[:space:]]*Include[[:space:]]+/etc/ssh/sshd_config\.d/' /etc/ssh/sshd_config; then
         # 00- sorts first and sshd keeps the first value it reads, so this wins
         # over cloud-init's 50-cloud-init.conf, which turns passwords back on.
@@ -287,7 +422,9 @@ module_interactive() {
         return 0
     fi
 
-    if [ "${TS_SET_PASSWORD:-no}" = yes ]; then
+    if [ "${TS_SET_PASSWORD:-no}" = yes ] && user_has_password "$(invoking_user)"; then
+        log_ok "$(invoking_user) already has a password"
+    elif [ "${TS_SET_PASSWORD:-no}" = yes ]; then
         if [ -z "${ASSUME_YES:-}" ] && _have_tty; then
             log_step "Console password for $(invoking_user)"
             passwd "$(invoking_user)" || log_warn "Password not set"
@@ -296,7 +433,12 @@ module_interactive() {
         fi
     fi
 
-    access_confirmed && lock_down
+    if already_locked; then
+        log_ok "SSH already limited to the tailnet"
+        lock_down
+    elif access_confirmed; then
+        lock_down
+    fi
     return 0
 }
 

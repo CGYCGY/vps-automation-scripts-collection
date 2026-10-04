@@ -16,7 +16,7 @@ POLICY_GUIDE="docs/tailscale-tailnet.md"
 
 module_help() {
     cat <<EOF
-Usage: sudo $0 [-y] [--phase plan|deps|auto|interactive|summary]
+Usage: sudo $0 [-y] [--status] [--phase plan|deps|auto|interactive|summary]
 
 Answers can be given up front as environment variables:
   MACHINE_ROLE        dashboard | managed
@@ -32,7 +32,31 @@ Answers can be given up front as environment variables:
 EOF
 }
 
-coolify_installed() { [ -d "$COOLIFY_DATA/source" ] || [ -d "$COOLIFY_DATA" ]; }
+PACKAGES="curl wget git jq openssl ca-certificates"
+SUDOERS_LINE="$COOLIFY_USER ALL=(ALL) NOPASSWD:ALL"
+
+# Not $COOLIFY_DATA: the installer creates it before anything can fail, and a
+# dashboard creates it on every server it manages. The container only exists
+# once the install got through.
+coolify_installed() { have docker && docker container inspect coolify >/dev/null 2>&1; }
+
+user_in_groups() {
+    local groups
+    groups=" $(id -nG "$COOLIFY_USER" 2>/dev/null) "
+    case "$groups" in *" docker "*) ;; *) return 1 ;; esac
+    case "$groups" in *" sudo "*) ;; *) return 1 ;; esac
+}
+
+sudoers_done() {
+    local f="/etc/sudoers.d/$COOLIFY_USER"
+    [ "$(cat "$f" 2>/dev/null)" = "$SUDOERS_LINE" ] && [ "$(stat -c %a "$f")" = 440 ]
+}
+
+ghcr_logged_in() { grep -q '"ghcr.io"' /root/.docker/config.json 2>/dev/null; }
+
+coolify_home() { getent passwd "$COOLIFY_USER" | cut -d: -f6; }
+
+ghcr_copied() { cmp -s /root/.docker/config.json "$(coolify_home)/.docker/config.json"; }
 
 # Tailscale name Coolify should use to reach this machine, best available.
 tailnet_name() {
@@ -48,6 +72,100 @@ read_secret() {
     printf '%s: ' "$1" > /dev/tty
     IFS= read -rs REPLY < /dev/tty
     echo > /dev/tty
+}
+
+# The role for --status, which asks nothing: MACHINE_ROLE if given, else what
+# the machine shows. Prints nothing when it can't tell.
+detected_role() {
+    if [ -n "${MACHINE_ROLE:-}" ]; then echo "$MACHINE_ROLE"
+    elif coolify_installed; then echo dashboard
+    elif id "$COOLIFY_USER" >/dev/null 2>&1; then echo managed
+    fi
+}
+
+# Root can always ask Docker; a normal user only from the docker group.
+docker_readable() { is_root || docker info >/dev/null 2>&1; }
+
+module_status() {
+    local role missing prefix="" want tags certs
+    role="$(detected_role)"
+    case "$role" in
+        dashboard|managed|"") ;;
+        *) status_row coolify skipped "not a server (role: $role)"; return 0 ;;
+    esac
+
+    # shellcheck disable=SC2086
+    missing="$(missing_pkgs $PACKAGES)"
+    if [ -z "$missing" ]; then status_row coolify-packages present "curl, wget, git, jq, openssl"
+    else status_row coolify-packages missing "will apt install $missing"; fi
+
+    if have docker; then
+        if service_up docker; then status_row docker present "$(docker --version 2>/dev/null), running"
+        elif [ "$role" = managed ]; then status_row docker partial "installed, not running; will enable and start it"
+        else status_row docker partial "installed, not running"; fi
+    else
+        case "$role" in
+            dashboard) status_row docker missing "comes with Coolify's installer" ;;
+            managed)   status_row docker missing "will install from get.docker.com" ;;
+            *)         status_row docker missing "dashboard: comes with Coolify's installer; managed: from get.docker.com" ;;
+        esac
+    fi
+
+    [ -z "$role" ] && prefix="dashboard: "
+    if [ "$role" != managed ]; then
+        if coolify_installed; then status_row coolify present "coolify container exists"
+        elif have docker && ! docker_readable; then status_row coolify unknown "${prefix}needs sudo to check"
+        else status_row coolify missing "${prefix}will run Coolify's installer"; fi
+    fi
+
+    [ -z "$role" ] && prefix="managed: "
+    if [ "$role" != dashboard ]; then
+        if ! id "$COOLIFY_USER" >/dev/null 2>&1; then
+            status_row coolify-user missing "${prefix}will create $COOLIFY_USER in the docker and sudo groups"
+        elif user_in_groups; then status_row coolify-user present "in the docker and sudo groups"
+        else status_row coolify-user partial "exists; will add it to the docker and sudo groups"; fi
+        if sudoers_done; then status_row coolify-sudo present "passwordless, /etc/sudoers.d/$COOLIFY_USER"
+        elif ! is_root; then status_row coolify-sudo unknown "${prefix}needs sudo to check"
+        else status_row coolify-sudo missing "${prefix}will add /etc/sudoers.d/$COOLIFY_USER"; fi
+    fi
+
+    if ! is_root; then
+        status_row ghcr-login unknown "needs sudo to check"
+    elif ! ghcr_logged_in; then
+        status_row ghcr-login skipped "not logged in; optional, asked during setup"
+    elif id "$COOLIFY_USER" >/dev/null 2>&1 && ! ghcr_copied; then
+        status_row ghcr-login partial "root logged in; credentials not copied to $COOLIFY_USER"
+    else
+        status_row ghcr-login present "Docker logged in to ghcr.io"
+    fi
+
+    if [ ! -d "$COOLIFY_DATA" ]; then
+        status_row cf-cert skipped "none; optional, asked during setup"
+    elif ! is_root; then
+        status_row cf-cert unknown "needs sudo to check"
+    else
+        certs="$(cd "$PROXY_DIR/certs" 2>/dev/null && ls -- *.cert 2>/dev/null | tr '\n' ' ')"
+        if [ -n "$certs" ]; then status_row cf-cert present "${certs% } in $PROXY_DIR/certs"
+        else status_row cf-cert skipped "none; optional, asked during setup"; fi
+    fi
+
+    # The summary's tag reminder, as a row.
+    case "$role" in
+        dashboard) want="tag:coolify,tag:vps" ;;
+        managed)   want="tag:vps" ;;
+        *)         want="" ;;
+    esac
+    if [ -z "$want" ]; then
+        status_row tailnet-tags unknown "role unknown; set MACHINE_ROLE to check"
+    elif ! have tailscale || [ "$(ts_state)" != Running ]; then
+        status_row tailnet-tags skipped "Tailscale not connected"
+    elif ! have jq; then
+        status_row tailnet-tags unknown "jq needed to read the tags; the setup installs it"
+    else
+        tags="$(tailscale status --json 2>/dev/null | jq -r '(.Self.Tags // []) | sort | join(",")' 2>/dev/null || true)"
+        if [ "$tags" = "$want" ]; then status_row tailnet-tags present "$tags"
+        else status_row tailnet-tags missing "a $role needs $want (now: ${tags:-none}); see $POLICY_GUIDE"; fi
+    fi
 }
 
 module_plan() {
@@ -87,15 +205,27 @@ install_docker() {
         rm -f "$installer"
         log_ok "Docker installed"
     fi
-    systemctl enable --now docker >/dev/null 2>&1 || true
+    if service_up docker; then
+        log_ok "Docker already enabled and running"
+    else
+        systemctl enable --now docker >/dev/null 2>&1 || true
+    fi
 }
 
 module_deps() {
     log_step "Coolify: packages"
-    export DEBIAN_FRONTEND=noninteractive
-    apt-get update -qq
-    apt-get install -y -qq curl wget git jq openssl ca-certificates >/dev/null
-    log_ok "curl, wget, git, jq, openssl"
+    local missing
+    # shellcheck disable=SC2086
+    missing="$(missing_pkgs $PACKAGES)"
+    if [ -z "$missing" ]; then
+        log_ok "curl, wget, git, jq, openssl already installed"
+    else
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq
+        # shellcheck disable=SC2086
+        apt-get install -y -qq $missing >/dev/null
+        log_ok "Installed $missing"
+    fi
 
     # The dashboard's own installer brings Docker, pinned to versions it supports.
     if [ "$MACHINE_ROLE" = managed ]; then
@@ -110,16 +240,25 @@ setup_coolify_user() {
         useradd -m -s /bin/bash "$COOLIFY_USER"
         log_ok "User $COOLIFY_USER created"
     fi
-    getent group docker >/dev/null || groupadd docker
-    usermod -aG docker,sudo "$COOLIFY_USER"
+    if user_in_groups; then
+        log_ok "$COOLIFY_USER already in the docker and sudo groups"
+    else
+        getent group docker >/dev/null || groupadd docker
+        usermod -aG docker,sudo "$COOLIFY_USER"
+        log_ok "$COOLIFY_USER added to the docker and sudo groups"
+    fi
 
     # Coolify runs docker and apt through sudo and can't answer a password prompt.
+    if sudoers_done; then
+        log_ok "$COOLIFY_USER already has passwordless sudo"
+        return 0
+    fi
     local sudoers="/etc/sudoers.d/$COOLIFY_USER" tmp
     tmp="$(mktemp)"
-    echo "$COOLIFY_USER ALL=(ALL) NOPASSWD:ALL" > "$tmp"
+    echo "$SUDOERS_LINE" > "$tmp"
     if visudo -cf "$tmp" >/dev/null; then
         install -m 440 "$tmp" "$sudoers"
-        log_ok "$COOLIFY_USER: docker and sudo groups, passwordless sudo"
+        log_ok "$COOLIFY_USER: passwordless sudo"
     else
         log_error "sudoers entry for $COOLIFY_USER failed validation; not installed"
     fi
@@ -153,6 +292,11 @@ module_auto() {
 
 setup_ghcr() {
     log_step "Coolify: GitHub Container Registry"
+    if [ -z "${GHCR_TOKEN:-}" ] && ghcr_logged_in; then
+        log_ok "Docker already logged in to ghcr.io (set GHCR_TOKEN to log in again)"
+        copy_ghcr_creds
+        return 0
+    fi
     if [ -z "${GHCR_TOKEN:-}" ]; then
         if ! _have_tty; then
             log_warn "No terminal to ask for the GitHub token; skipped"
@@ -175,11 +319,18 @@ setup_ghcr() {
         return 0
     fi
     log_ok "Logged in to ghcr.io"
+    copy_ghcr_creds
+}
 
-    # Coolify pulls as root on the dashboard but as coolify on a managed server.
+# Coolify pulls as root on the dashboard but as coolify on a managed server.
+copy_ghcr_creds() {
     if id "$COOLIFY_USER" >/dev/null 2>&1 && [ -f /root/.docker/config.json ]; then
+        if ghcr_copied; then
+            log_ok "ghcr.io credentials already copied to $COOLIFY_USER"
+            return 0
+        fi
         local home
-        home="$(getent passwd "$COOLIFY_USER" | cut -d: -f6)"
+        home="$(coolify_home)"
         mkdir -p "$home/.docker"
         cp /root/.docker/config.json "$home/.docker/config.json"
         chown -R "$COOLIFY_USER:$COOLIFY_USER" "$home/.docker"
@@ -212,6 +363,22 @@ setup_cloudflare_cert() {
     local cert="$certs/$CF_DOMAIN.cert" key="$certs/$CF_DOMAIN.key"
     mkdir -p "$certs"
 
+    if cf_cert_installed "$cert" "$key" &&
+       { [ -z "${CF_CERT_FILE:-}" ] || cmp -s "$CF_CERT_FILE" "$cert"; } &&
+       { [ -z "${CF_KEY_FILE:-}" ] || cmp -s "$CF_KEY_FILE" "$key"; }; then
+        log_ok "Certificate and key for $CF_DOMAIN already in $certs (delete them to replace)"
+    else
+        install_cf_cert "$cert" "$key" || return 0
+    fi
+    write_traefik_config
+}
+
+cf_cert_installed() {
+    openssl x509 -in "$1" -noout 2>/dev/null && openssl pkey -in "$2" -noout 2>/dev/null
+}
+
+install_cf_cert() {
+    local cert="$1" key="$2" certs="$PROXY_DIR/certs"
     if [ -z "${CF_CERT_FILE:-}" ]; then
         echo "Create the certificate first: Cloudflare → $CF_DOMAIN → SSL/TLS → Origin Server → Create Certificate"
         echo "  RSA (2048), hostnames *.$CF_DOMAIN and $CF_DOMAIN, validity 15 years. Keep the page open."
@@ -221,34 +388,39 @@ setup_cloudflare_cert() {
         log_error "Certificate or key missing; nothing installed"
         rm -f "$cert" "$key"
         note "- Cloudflare certificate not installed. Re-run with CF_CERT_FILE and CF_KEY_FILE, or from a terminal."
-        return 0
+        return 1
     fi
     chmod 644 "$cert"
     chmod 600 "$key"
 
     if ! openssl x509 -in "$cert" -noout 2>/dev/null; then
         log_error "$cert is not a valid certificate"
-        return 0
+        return 1
     fi
     if ! openssl pkey -in "$key" -noout 2>/dev/null; then
         log_error "$key is not a valid private key"
-        return 0
+        return 1
     fi
     log_ok "Certificate and key saved in $certs"
     openssl x509 -in "$cert" -noout -subject -enddate | sed 's/^/    /'
+}
 
+write_traefik_config() {
+    local file="$PROXY_DIR/dynamic/cloudflare-origin-cert.yaml"
     # /traefik/certs is where Coolify's proxy container mounts $PROXY_DIR/certs.
     local traefik_yaml="tls:
   certificates:
     - certFile: /traefik/certs/$CF_DOMAIN.cert
       keyFile: /traefik/certs/$CF_DOMAIN.key"
-    if [ "${CF_TRAEFIK_CONFIG:-yes}" = yes ]; then
-        mkdir -p "$PROXY_DIR/dynamic"
-        echo "$traefik_yaml" > "$PROXY_DIR/dynamic/cloudflare-origin-cert.yaml"
-        log_ok "Traefik config written to $PROXY_DIR/dynamic/cloudflare-origin-cert.yaml"
-    else
+    if [ "${CF_TRAEFIK_CONFIG:-yes}" != yes ]; then
         note "- Add this in Coolify → Servers → this server → Proxy → Dynamic Configuration:"
         note "$(echo "$traefik_yaml" | sed 's/^/    /')"
+    elif [ "$(cat "$file" 2>/dev/null)" = "$traefik_yaml" ]; then
+        log_ok "Traefik config already in $file"
+    else
+        mkdir -p "$PROXY_DIR/dynamic"
+        echo "$traefik_yaml" > "$file"
+        log_ok "Traefik config written to $file"
     fi
     note "- Cloudflare: SSL/TLS → Overview → Full (strict); Edge Certificates → Always Use HTTPS."
     note "- Restart the proxy (Coolify → Servers → this server → Proxy → Restart), then redeploy apps."

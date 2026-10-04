@@ -16,6 +16,8 @@ sudo ./coolify-setup.sh
 ```
 
 It is also run by `sudo ./server/setup.sh --coolify` and `--full`.
+`./coolify-setup.sh --status` shows what is in place without changing anything
+(with sudo, it also checks the sudoers entry and the ghcr.io login).
 
 ## What It Does
 
@@ -23,7 +25,7 @@ It is also run by `sudo ./server/setup.sh --coolify` and `--full`.
 |-------|-----------|---------|
 | plan | Asks the role, and whether to set up ghcr.io and a Cloudflare certificate (with its domain) | same |
 | deps | Installs curl, wget, git, jq, openssl | same, plus Docker from get.docker.com |
-| auto | Runs Coolify's official installer, which brings its own Docker; skipped if already installed unless you ask to rerun it | Creates user `coolify` in the `docker` and `sudo` groups, with passwordless sudo |
+| auto | Runs Coolify's official installer, which brings its own Docker; skipped once the `coolify` container exists, unless you ask to rerun it | Creates user `coolify` in the `docker` and `sudo` groups, with passwordless sudo |
 | interactive | Asks for the GitHub token, and takes the pasted Cloudflare certificate and key | same |
 | summary | Dashboard URL over the tailnet, tagging reminder | Checks the `coolify` user and Docker, then shows what to enter in Coolify |
 
@@ -87,8 +89,8 @@ sudo MACHINE_ROLE=managed ./coolify-setup.sh -y
 | `CF_TRAEFIK_CONFIG` | `yes` / `no`: write the Traefik config that loads it |
 | `CF_CERT_FILE`, `CF_KEY_FILE` | certificate and key files; pasted if unset |
 
-Options: `-y` (defaults, no questions), `--phase plan|deps|auto|interactive|summary`
-(used by the server menu), `--help`.
+Options: `-y` (defaults, no questions), `--status` (what is in place, changes nothing),
+`--phase plan|deps|auto|interactive|summary` (used by the server menu), `--help`.
 
 ## Troubleshooting
 

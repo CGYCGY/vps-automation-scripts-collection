@@ -10,6 +10,7 @@ sudo ./swap-setup.sh
 ```
 
 It is also run by `sudo ./server/setup.sh --swap` and `--full`.
+`./swap-setup.sh --status` shows what is in place without changing anything.
 
 ## Settings by RAM
 
@@ -27,10 +28,13 @@ It is also run by `sudo ./server/setup.sh --swap` and `--full`.
 
 ## Skipped When
 
-- The machine already has 2GB or more of swap
+- The machine already has 2GB or more of swap, not counting a 4GB `/swapfile`
+  from an earlier run
 - `/` has less than 8GB free
 
-Settings are only changed when the swap file is created.
+Settings are only changed along with the swap file. Each step (the file, its
+`/etc/fstab` line, the settings) is skipped when already done, so a run that
+stopped halfway is finished by running it again.
 
 ## What It Does
 

@@ -14,6 +14,8 @@ sudo ./tailscale-setup.sh
 ```
 
 It is also run by `sudo ./server/setup.sh --tailscale` and `--full`.
+`./tailscale-setup.sh --status` shows what is in place without changing
+anything; the firewall and sshd checks need sudo.
 
 ## What It Does
 
@@ -27,7 +29,7 @@ It is also run by `sudo ./server/setup.sh --tailscale` and `--full`.
 The lockdown only happens once Tailscale is connected **and** you've confirmed
 from another device that Tailscale SSH gets you in. Otherwise it is skipped, and
 a re-run finishes it. On a machine where UFW is already active, its rules only
-change at that point too.
+change at that point too. Once SSH is locked down, a re-run doesn't ask again.
 
 ### Roles
 

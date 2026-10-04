@@ -30,6 +30,7 @@ sudo ./server/setup.sh --tailscale       # Tailscale SSH and firewall only
 sudo ./server/setup.sh --coolify         # Coolify only (asks: dashboard or managed server)
 sudo ./server/setup.sh --coolify-remote  # Coolify as a managed server
 sudo ./server/setup.sh --swap            # Swap only
+./server/setup.sh --status               # Survey swap, Tailscale and Coolify without changing anything
 ./server/setup.sh --minio                # MinIO migration tool
 ./server/setup.sh --minio-users          # MinIO user & bucket manager
 ./server/setup.sh --postgres             # PostgreSQL manager
@@ -39,6 +40,9 @@ sudo ./server/setup.sh --help            # Show all options
 Every setup runs in the same order: sudo first, then all of its questions, then
 installs and changes that need no input, and last the steps that need you, such
 as the Tailscale login. `-y` takes the default answer for every question.
+Every step checks the machine first and skips what is already done, so a run
+that stopped halfway is finished by running it again. `--status` shows the same
+checks; run it with sudo for the firewall, sshd and Docker ones.
 
 ### Workstation Options
 

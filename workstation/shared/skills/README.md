@@ -60,8 +60,9 @@ the next run points the link at the projects checkout and says so. The
 
 An existing clone is never pulled, fetched or reset. A non-empty
 `~/.gylab/<repo>` that isn't a clone of the repo is reported and left alone.
-That includes one holding only the tool's `config.json` and `state/`, left
-from a projects checkout that has since gone.
+The one exception is a folder holding only the tool's `config.json` and
+`state/`, left from a projects checkout that has since gone: the clone goes in
+beside them, as the skill's own installer would do.
 
 ## Links
 

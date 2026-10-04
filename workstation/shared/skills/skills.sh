@@ -198,12 +198,37 @@ EOF
     elif [ -e "$dir/.git" ]; then
         STATE=blocked
         WHY="$(tilde "$dir") is a clone of $(git -C "$dir" remote get-url origin 2>/dev/null || echo "another repo")"
-    elif [ -e "$dir" ] && { [ ! -d "$dir" ] || [ -n "$(ls -A "$dir" 2>/dev/null)" ]; }; then
+    elif [ -e "$dir" ] && ! only_tool_data "$dir"; then
         STATE=blocked
         WHY="$(tilde "$dir") is not a clone"
     else
         STATE=clone
     fi
+}
+
+# A ~/.gylab/<repo> folder may hold only the tool's config.json and state/,
+# left by a setup run against a projects checkout that is gone; the clone can
+# go in beside them since the repos gitignore both.
+only_tool_data() {
+    local f
+    [ -d "$1" ] || return 1
+    for f in "$1"/* "$1"/.[!.]*; do
+        [ -e "$f" ] || continue
+        case "${f##*/}" in config.json|state|.DS_Store) ;; *) return 1 ;; esac
+    done
+    return 0
+}
+
+# git clone refuses a non-empty folder, so an existing one is filled in place.
+clone_into() {
+    local url="$1" dir="$2" branch
+    [ -e "$dir" ] || { git clone -q "$url" "$dir" < /dev/null; return; }
+    git -C "$dir" init -q &&
+        git -C "$dir" remote add origin "$url" &&
+        git -C "$dir" fetch -q origin < /dev/null &&
+        branch="$(git -C "$dir" ls-remote --symref origin HEAD < /dev/null | sed -n 's|^ref: refs/heads/\([^[:space:]]*\).*|\1|p')" &&
+        [ -n "$branch" ] &&
+        git -C "$dir" checkout -q -b "$branch" --track "origin/$branch"
 }
 
 folder_in_way() { [ -e "$SKILLS_DIR/$1" ] && [ ! -L "$SKILLS_DIR/$1" ]; }
@@ -395,7 +420,7 @@ clone_pending() {
             continue
         fi
         log_info "${dir##*/}: cloning into $(tilde "$dir")"
-        if git clone -q "$url" "$dir" < /dev/null; then
+        if clone_into "$url" "$dir"; then
             log_ok "${dir##*/} cloned"
             cloned=$((cloned + 1))
         else

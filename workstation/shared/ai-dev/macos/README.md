@@ -89,8 +89,12 @@ the `node` step guarantees.
 | `--status` | Survey the machine without changing anything |
 | `--force` | Reinstall everything, ignoring detection |
 | `--reset` | Discard saved progress from an interrupted run |
+| `--no-skills` | Don't offer the agent skills at the end |
 
-`NODE_VERSION` and `NVM_VERSION` work the same way as in the Linux script.
+`NODE_VERSION` and `NVM_VERSION` work the same way as in the Linux script, and
+so does the end-of-run question about the agent skills. The
+[Mac setup](../../../macos/README.md) passes `--no-skills`, because it runs
+`skills.sh` itself later.
 
 Detection, resume and backups also match the Linux script. Re-runs skip
 anything already present, even when it was configured by hand. A failed run

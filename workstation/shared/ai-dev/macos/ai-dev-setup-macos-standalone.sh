@@ -25,7 +25,8 @@ cat > "$AI_DEV_TMP/workstation/shared/ai-dev/macos/ai-dev-setup-macos.sh" <<'AI_
 # the record is deleted once everything succeeds.
 #
 # This script only ever INSTALLS what is missing; it never updates what is
-# already there. Updating is `upd`'s job.
+# already there. Updating is `upd`'s job. After a successful run it offers to
+# set up the agent skills (workstation/shared/skills/skills.sh).
 #
 #   ./ai-dev-setup-macos.sh                     survey, show the plan, ask, then install
 #   ./ai-dev-setup-macos.sh -y                  same, without the confirmation prompt
@@ -33,6 +34,7 @@ cat > "$AI_DEV_TMP/workstation/shared/ai-dev/macos/ai-dev-setup-macos.sh" <<'AI_
 #   ./ai-dev-setup-macos.sh --status            survey only, change nothing
 #   ./ai-dev-setup-macos.sh --force             reinstall everything, ignoring detection
 #   ./ai-dev-setup-macos.sh --reset             discard a crashed run's saved progress
+#   ./ai-dev-setup-macos.sh --no-skills         don't offer the agent skills at the end
 #
 # Versions float to latest by default. Pin by editing the two lines below, or
 # per-run:  NODE_VERSION=25.2.1 NVM_VERSION=v0.40.7 ./ai-dev-setup-macos.sh
@@ -110,7 +112,7 @@ MARKER_END="# <<< new-device-setup <<<"
 
 STEPS=(homebrew nvm node bun shell-path claude codex pi prime-agent herdr agy npm-allow-scripts agent-browser agent-instructions claude-statusline agent-settings aliases project-navigator)
 
-OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0
+OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0; OPT_SKILLS=1
 
 #############################################
 # OUTPUT
@@ -805,6 +807,34 @@ ${C_BOLD}Project navigator:${C_RESET} installed from https://github.com/CGYCGY/s
 EOF
 }
 
+# Not in the standalone bundle: skills.sh needs the rest of the repository.
+SKILLS_SCRIPT="${SCRIPT_DIR}/../../skills/skills.sh"
+
+offer_skills() {
+    [ "$OPT_SKILLS" -eq 1 ] || return 0
+    if [ ! -f "$SKILLS_SCRIPT" ]; then
+        log_info "agent skills are set up by workstation/shared/skills/skills.sh, from a checkout of the repository"
+        return 0
+    fi
+    local ans=y
+    if [ "$OPT_YES" -ne 1 ]; then
+        if [ -t 0 ]; then
+            read -r -p "Set up the agent skills too? [Y/n] " ans || ans=n
+        elif ( : < /dev/tty ) 2>/dev/null; then
+            read -r -p "Set up the agent skills too? [Y/n] " ans < /dev/tty || ans=n
+        else
+            log_info "no terminal to ask about the agent skills; run workstation/shared/skills/skills.sh later"
+            return 0
+        fi
+    fi
+    case "$ans" in [nN]|[nN][oO]) return 0 ;; esac
+    set --
+    [ "$OPT_YES" -eq 1 ] && set -- -y
+    # SETUP_GO answers skills.sh's own "Start the setup?": the user just said yes.
+    SETUP_GO=yes bash "$SKILLS_SCRIPT" "$@" ||
+        log_warn "the agent skills setup failed; run workstation/shared/skills/skills.sh again"
+}
+
 #############################################
 # MAIN
 #############################################
@@ -815,6 +845,7 @@ while [ $# -gt 0 ]; do
         --upgrade)           OPT_UPGRADE=1 ;;
         --force)             OPT_FORCE=1 ;;
         --status)            OPT_STATUS=1 ;;
+        --no-skills)         OPT_SKILLS=0 ;;
         --with-instructions) ;;  # once opt-in, now the default; still accepted so old commands run
         --reset)             rm -f "$STATE_FILE"; log_ok "saved progress discarded"; exit 0 ;;
         -h|--help)           awk 'NR>1 && /^#/ {sub(/^# ?/,""); print; next} NR>1 {exit}' "$0"; exit 0 ;;
@@ -853,6 +884,7 @@ fi
 if [ ${#PLAN[@]} -eq 0 ] && [ "$OPT_UPGRADE" -eq 0 ]; then
     log_ok "everything is already set up — nothing to do"
     rm -f "$STATE_FILE"
+    offer_skills
     exit 0
 fi
 
@@ -874,6 +906,7 @@ rm -f "$STATE_FILE"
 report
 echo
 log_ok "done — log at ${LOG_FILE}"
+offer_skills
 AI_DEV_PAYLOAD_EOF
 
 cat > "$AI_DEV_TMP/workstation/shared/ai-dev/macos/project-navigator.zsh" <<'AI_DEV_PAYLOAD_EOF'

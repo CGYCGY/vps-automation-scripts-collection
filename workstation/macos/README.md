@@ -17,14 +17,15 @@ macOS ships, so nothing has to be installed first.
 1. **sudo:** asked once. It stays valid for the whole run, so no step stops
    halfway to ask again.
 2. **Questions:** desktop apps or not, always on or not, git identity, GitHub
-   key, your projects. Then one "Start the setup?".
+   key, your projects, the agent skills. Then one "Start the setup?".
 3. **Dependencies:** Homebrew, apps, Tailscale. Then Full Disk Access is
    checked, once the apps it applies to exist.
 4. **No input needed:** Tailscale as a system service, the AI dev toolchain,
-   power, Finder, Zed settings, git settings, project folders and `cdp` names.
+   power, Finder, Zed settings, git settings, project folders and `cdp` names,
+   links for the agent skills whose repos are already there.
 5. **Needs you:** the Tailscale login, then creating the GitHub key and adding
-   it to your account, then Remote Login off. Your projects are cloned last,
-   once the key is on the account.
+   it to your account, then Remote Login off. Your projects are cloned once the
+   key is on the account, then the repos of any skills still missing.
 
 ## Modules
 
@@ -40,6 +41,7 @@ macOS ships, so nothing has to be installed first.
 | `zed.sh` | Merges `zed-settings.json` into Zed's settings when Zed is installed: panel docks, Ayu themes, telemetry off. Only values that differ from Zed's defaults are tracked. The rewrite drops the file's comments, so the original is kept as a `.backup.*` copy |
 | `ssh.sh` | Git identity, GitHub https URLs through SSH, a GitHub key in the Keychain, and Remote Login off |
 | [`projects.sh`](../shared/projects/README.md) | Optional, one question. Clones the repos in your projects list and registers each name with `cdp` |
+| [`skills.sh`](../shared/skills/README.md) | Optional, one question. Links each agent skill into `~/.claude/skills` from your projects checkout, or from a clone in `~/.gylab/repos` |
 
 Each module also runs alone, e.g. `./workstation/macos/power.sh --status` or
 `./workstation/shared/projects/projects.sh`.
@@ -74,3 +76,4 @@ and run the setup again for the steps that need it.
 | `PROJECTS_SETUP` | `yes` / `no`: clone your projects |
 | `PROJECTS_SOURCE` | URL, file path or JSON of your projects list, when there is none yet |
 | `PROJECTS_ROOT` | where your projects live, when the list has no root |
+| `SKILLS_SETUP` | `yes` / `no`: link the agent skills |

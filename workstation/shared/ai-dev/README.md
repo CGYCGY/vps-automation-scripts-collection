@@ -121,6 +121,12 @@ curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/prof
 | `--status` | Survey the machine without changing anything |
 | `--force` | Reinstall everything, ignoring detection |
 | `--reset` | Discard saved progress from an interrupted run |
+| `--no-skills` | Don't offer the agent skills at the end |
+
+After a successful run, the script asks "Set up the agent skills too?" and, on
+yes, runs [`../skills/skills.sh`](../skills/README.md); with `-y` it says yes
+and passes `-y` on. The standalone file has no `skills.sh`, so it prints where
+the skills come from instead.
 
 ## Environment Overrides
 

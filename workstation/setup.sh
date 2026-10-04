@@ -13,11 +13,12 @@ MAC="$SCRIPT_DIR/macos"
 SHARED="$SCRIPT_DIR/shared"
 # Order matters within each phase: Full Disk Access comes after the apps it
 # applies to are installed, ssh after tailscale, because Remote Login only
-# goes off once Tailscale SSH is connected, and projects after ssh, because
-# cloning needs the GitHub key on the account.
+# goes off once Tailscale SSH is connected, projects after ssh, because
+# cloning needs the GitHub key on the account, and skills after projects, so a
+# skill links into the projects checkout when its repo is there.
 MACOS_MODULES="$MAC/homebrew.sh $MAC/apps.sh $MAC/tailscale.sh $MAC/full-disk-access.sh
 $MAC/ai-dev.sh $MAC/power.sh $MAC/finder.sh $MAC/zed.sh $MAC/ssh.sh
-$SHARED/projects/projects.sh"
+$SHARED/projects/projects.sh $SHARED/skills/skills.sh"
 
 show_help() {
     cat <<EOF
@@ -27,9 +28,10 @@ Usage: $0 [--status] [-y]
   -y, --yes   Take the default answer for every question
 
 macOS: asks for sudo once, asks every question, installs, then leaves the
-steps that need you (Tailscale login, GitHub key, cloning your projects) for
-the end.
-Linux: runs the AI dev toolchain setup; its flags are passed through.
+steps that need you (Tailscale login, GitHub key, cloning your projects and
+the agent skills' repos) for the end.
+Linux: runs the AI dev toolchain setup, which offers the agent skills at the
+end; its flags are passed through.
 EOF
 }
 

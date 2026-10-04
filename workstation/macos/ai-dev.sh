@@ -14,7 +14,8 @@ module_plan() { require_user; }
 
 module_auto() {
     log_step "AI dev toolchain"
-    bash "$AI_DEV" -y
+    # skills.sh is its own module later in the menu, so it isn't offered here.
+    bash "$AI_DEV" -y --no-skills
 }
 
 module_summary() {

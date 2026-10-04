@@ -10,6 +10,12 @@
 #   summary      what to do next; nothing changes
 # plus `status`, run alone by --status: report what is in place, change nothing.
 #
+# Detect, never record: every step reads its state from the machine before
+# acting and skips what is already done. No marker files, no answers kept
+# between runs, so recovering from a crash is just running again; a step that
+# cannot be detected gets redesigned until it can. module_status reports that
+# same detection, and every module must define it.
+#
 # A menu that runs several modules calls each with `--phase <name>`, one phase
 # at a time across all modules, so every question comes first and every
 # interactive step comes last. Answers survive between those separate
@@ -180,6 +186,19 @@ ask_server_role() {
         "dashboard|Coolify dashboard (runs Coolify itself)" \
         "managed|Managed server (deployed to by a Coolify dashboard)"
 }
+
+# --- json ----------------------------------------------------------------------
+
+# For JSONC files (editor settings: comments, trailing commas), which jq rejects.
+# Strings are matched first so a // inside one (a URL) is kept.
+jsonc_to_json() {
+    perl -0777 -pe '
+        s#("(?:[^"\\]|\\.)*")|//[^\n]*|/\*.*?\*/#defined $1 ? $1 : ""#gse;
+        s#("(?:[^"\\]|\\.)*")|,(\s*[\]}])#defined $1 ? $1 : $2#gse;
+    ' "$1"
+}
+
+jsonc_valid() { jsonc_to_json "$1" | jq -e . >/dev/null 2>&1; }
 
 # --- notes for the summary -----------------------------------------------------
 

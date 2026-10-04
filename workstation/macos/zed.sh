@@ -10,15 +10,6 @@ ZED_SETTINGS="$HOME/.config/zed/settings.json"
 
 zed_installed() { [ -d /Applications/Zed.app ] || brew list --cask zed >/dev/null 2>&1; }
 
-# Zed's settings file is JSONC (comments, trailing commas), which jq rejects.
-# Strings are matched first so a // inside one (a URL) is kept.
-jsonc_to_json() {
-    perl -0777 -pe '
-        s#("(?:[^"\\]|\\.)*")|//[^\n]*|/\*.*?\*/#defined $1 ? $1 : ""#gse;
-        s#("(?:[^"\\]|\\.)*")|,(\s*[\]}])#defined $1 ? $1 : $2#gse;
-    ' "$1"
-}
-
 defaults_set() {
     [ -s "$ZED_SETTINGS" ] && have jq &&
         jsonc_to_json "$ZED_SETTINGS" | jq -e --slurpfile d "$ZED_DEFAULTS" '. == (. * $d[0])' >/dev/null 2>&1

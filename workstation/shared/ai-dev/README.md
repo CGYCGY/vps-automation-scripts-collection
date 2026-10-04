@@ -84,8 +84,10 @@ The three instruction files intentionally remain separate so each tool can use i
 `ai-dev-standalone.sh` and `macos/ai-dev-setup-macos-standalone.sh` are
 generated. The sources stay the truth: `ai-dev-setup.sh`, `project-navigator.sh`,
 `macos/ai-dev-setup-macos.sh`, `macos/project-navigator.zsh`,
-`claude/statusline-command.sh`, the three files under `agent-instructions/` and
-the three under `agent-settings/`.
+`claude/statusline-command.sh`, the three files under `agent-instructions/`, the
+three under `agent-settings/`, and the repository's
+`shared/lib/project-navigator-lib.sh`. A bundle unpacks them in the repository's
+layout.
 After editing any of them, rebuild both:
 
 ```bash
@@ -102,7 +104,7 @@ leaves no diff, and `--check` is a reliable staleness test.
 
 ## Project Navigator
 
-`project-navigator.sh` is fetched from shell-utils at install time so a new machine gets the current version; the copy tracked here is the offline fallback. It lands at `~/.project-navigator.sh` with an empty registry — the upstream entries are example paths — and `~/.bashrc` is made to source it. Register projects on the new machine with `cdp add <name>`. An existing `~/.project-navigator.sh` is never overwritten, since it holds that machine's own registry.
+`project-navigator.sh` is fetched from shell-utils at install time so a new machine gets the current version; the copy tracked here is the offline fallback. It lands at `~/.project-navigator.sh` with an empty registry — the upstream entries are example paths — and `~/.bashrc` is made to source it. Register projects on the new machine with `cdp add <name>`, or all at once with the [projects module](../projects/README.md). The install code is shared with that module in `shared/lib/project-navigator-lib.sh`. An existing `~/.project-navigator.sh` is never overwritten, since it holds that machine's own registry.
 
 Refresh the bundled fallback when upstream changes:
 

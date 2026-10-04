@@ -12,9 +12,9 @@ set -euo pipefail
 
 AI_DEV_TMP="$(mktemp -d)"
 trap 'rm -rf "$AI_DEV_TMP"' EXIT
-mkdir -p "$AI_DEV_TMP/agent-instructions" "$AI_DEV_TMP/claude" "$AI_DEV_TMP/agent-settings"
+mkdir -p "$AI_DEV_TMP/workstation/shared/ai-dev" "$AI_DEV_TMP/shared/lib" "$AI_DEV_TMP/workstation/shared/ai-dev/agent-instructions" "$AI_DEV_TMP/workstation/shared/ai-dev/claude" "$AI_DEV_TMP/workstation/shared/ai-dev/agent-settings"
 
-cat > "$AI_DEV_TMP/ai-dev-setup.sh" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/ai-dev-setup.sh" <<'AI_DEV_PAYLOAD_EOF'
 #!/usr/bin/env bash
 # Bootstraps a VPS or local box with the AI coding-agent toolchain.
 #
@@ -61,13 +61,11 @@ ALIAS_DEFS=(
     'dc|alias dc="docker compose"'
     'jj|alias jj="just"'
 )
-# Project navigation (cdp) is maintained in CGYCGY/shell-utils. Upstream is
-# fetched first so a new box gets the current version; the copy beside this
-# script is the offline fallback. Refresh it now and then:
-#   curl -fsSL $PN_URL -o workstation/shared/ai-dev/project-navigator.sh
-PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh"
-PN_FALLBACK="${SCRIPT_DIR}/project-navigator.sh"
-PN_FILE="$HOME/.project-navigator.sh"
+# Project navigation (cdp): install and fallback copy live in the shared helper,
+# which the projects module uses too.
+# shellcheck source=../../../shared/lib/project-navigator-lib.sh
+. "${SCRIPT_DIR}/../../../shared/lib/project-navigator-lib.sh"
+pn_init bash
 
 # "repository filename|user destination". These stay as separate files because
 # each agent needs a different model identifier and may gain tool-specific rules.
@@ -397,26 +395,14 @@ detect_agent_settings() {
     return 1
 }
 
-# Two independent halves: the file, and ~/.bashrc sourcing it. Either can already
-# be in place on its own, so both are checked and only the missing half is done.
-PN_NEED_FILE=0
-PN_NEED_SOURCE=0
-
 detect_project_navigator() {
-    PN_NEED_FILE=0; PN_NEED_SOURCE=0
-    [ -f "$PN_FILE" ] || PN_NEED_FILE=1
-    grep -q 'project-navigator\.sh' "$HOME/.bashrc" 2>/dev/null || PN_NEED_SOURCE=1
-
-    if [ "$PN_NEED_FILE" -eq 0 ] && [ "$PN_NEED_SOURCE" -eq 0 ]; then
-        local n
-        n="$(grep -c "^[[:space:]]*\['" "$PN_FILE" 2>/dev/null || true)"
-        DETAIL="cdp ready, ${n:-0} project(s) registered"
+    if pn_detect; then
+        DETAIL="cdp ready, $(pn_count) project(s) registered"
         return 0
     fi
-
     local what=""
-    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install ~/.project-navigator.sh "
-    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from ~/.bashrc"
+    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install $PN_SHOW "
+    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from $PN_RC_SHOW"
     DETAIL="will ${what% }"
     return 1
 }
@@ -608,43 +594,8 @@ install_agent_settings() {
     rm -f "$tmp"
 }
 
-# The upstream registry is example paths, so it is emptied on the way in —
-# populate with `cdp add <name>`, which rewrites the file in place. An existing
-# file is never touched: it holds that device's own registry.
-install_project_navigator() {
-    if [ "$PN_NEED_FILE" -eq 1 ]; then
-        local src tmp
-        tmp="$(mktemp)"
-        if curl -fsSL --max-time 30 "$PN_URL" -o "$tmp" 2>/dev/null; then
-            src="$tmp"; log_info "fetched project-navigator.sh from shell-utils"
-        elif [ -f "$PN_FALLBACK" ]; then
-            src="$PN_FALLBACK"; log_warn "upstream unreachable — using the bundled copy"
-        else
-            rm -f "$tmp"; log_error "could not fetch $PN_URL and no bundled copy at $PN_FALLBACK"; return 1
-        fi
-        grep -q '^declare -gA PROJECTS=(' "$src" \
-            || { rm -f "$tmp"; log_error "no PROJECTS block in project-navigator.sh — upstream changed shape"; return 1; }
-        awk '/^declare -gA PROJECTS=\(/ { print; inblock=1; next }
-             inblock && /^\)/          { print; inblock=0; next }
-             inblock                    { next }
-                                        { print }' "$src" > "$PN_FILE"
-        rm -f "$tmp"
-        log_ok "installed ~/.project-navigator.sh with an empty registry — add projects with 'cdp add <name>'"
-    else
-        log_warn "~/.project-navigator.sh already exists — left untouched"
-    fi
-
-    if [ "$PN_NEED_SOURCE" -eq 1 ]; then
-        backup_once "$HOME/.bashrc"
-        cat >> "$HOME/.bashrc" <<'EOF'
-
-# >>> new-device-setup: cdp >>>
-[ -f "$HOME/.project-navigator.sh" ] && . "$HOME/.project-navigator.sh"
-# <<< new-device-setup: cdp <<<
-EOF
-        log_ok "~/.bashrc now sources the project navigator"
-    fi
-}
+# Populate the registry with `cdp add <name>` or the projects module.
+install_project_navigator() { pn_install; }
 
 install_aliases() {
     backup_once "$HOME/.bash_aliases"
@@ -842,7 +793,7 @@ echo
 log_ok "done — log at ${LOG_FILE}"
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/project-navigator.sh" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/project-navigator.sh" <<'AI_DEV_PAYLOAD_EOF'
 # ============================================
 # Project Navigation with Tab Completion
 # ============================================
@@ -950,7 +901,194 @@ _cdp_completions() {
 complete -F _cdp_completions cdp
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/agent-instructions/CLAUDE.md" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/shared/lib/project-navigator-lib.sh" <<'AI_DEV_PAYLOAD_EOF'
+#!/bin/bash
+# The cdp project navigator from CGYCGY/shell-utils: installing it, and
+# registering projects in its PROJECTS block. Sourced by the ai-dev setups and
+# the projects module; the caller provides log_info, log_ok, log_warn and
+# log_error.
+#
+# Must stay bash 3.2 compatible and safe under `set -euo pipefail`.
+
+PN_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# pn_init zsh|bash. macOS gets the zsh edition, Linux the bash one. Upstream is
+# fetched first so a new machine gets the current version; the copies in
+# workstation/shared/ai-dev/ are the offline fallback, and the standalone
+# bundles carry them at the same relative path. Refresh them now and then:
+#   curl -fsSL $PN_URL -o $PN_FALLBACK
+pn_init() {
+    local ai_dev="$PN_LIB_DIR/../../workstation/shared/ai-dev"
+    case "$1" in
+        zsh)
+            PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/zsh/profile-scripts/project-navigator.zsh"
+            PN_FALLBACK="$ai_dev/macos/project-navigator.zsh"
+            PN_FILE="$HOME/.zsh/project-navigator.zsh"
+            PN_SHOW="~/.zsh/project-navigator.zsh"
+            PN_RC="$HOME/.zshrc"
+            PN_RC_SHOW="~/.zshrc"
+            PN_DECL="typeset -gA PROJECTS=("
+            ;;
+        bash)
+            PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/profile-scripts/project-navigator.sh"
+            PN_FALLBACK="$ai_dev/project-navigator.sh"
+            PN_FILE="$HOME/.project-navigator.sh"
+            PN_SHOW="~/.project-navigator.sh"
+            PN_RC="$HOME/.bashrc"
+            PN_RC_SHOW="~/.bashrc"
+            PN_DECL="declare -gA PROJECTS=("
+            ;;
+        *) log_error "pn_init: unknown flavour '$1'"; return 1 ;;
+    esac
+    PN_FLAVOUR="$1"
+    PN_NEED_FILE=0
+    PN_NEED_SOURCE=0
+}
+
+# Two independent halves: the file, and the shell rc sourcing it. Either can
+# already be in place on its own, so both are checked and pn_install only does
+# the missing half. True when both are in place.
+pn_detect() {
+    PN_NEED_FILE=0; PN_NEED_SOURCE=0
+    [ -f "$PN_FILE" ] || PN_NEED_FILE=1
+    grep -qF "$(basename "$PN_FILE")" "$PN_RC" 2>/dev/null || PN_NEED_SOURCE=1
+    [ "$PN_NEED_FILE" -eq 0 ] && [ "$PN_NEED_SOURCE" -eq 0 ]
+}
+
+pn_count() {
+    local n
+    n="$(grep -c "^[[:space:]]*\['" "$PN_FILE" 2>/dev/null || true)"
+    echo "${n:-0}"
+}
+
+# The upstream registry is example paths, so it is emptied on the way in. An
+# existing file is never replaced: it holds that machine's own registry.
+pn_install() {
+    if [ "$PN_NEED_FILE" -eq 1 ]; then
+        local src tmp
+        tmp="$(mktemp)"
+        if curl -fsSL --retry 3 --max-time 30 "$PN_URL" -o "$tmp" 2>/dev/null; then
+            src="$tmp"; log_info "fetched $(basename "$PN_FILE") from shell-utils"
+        elif [ -f "$PN_FALLBACK" ]; then
+            src="$PN_FALLBACK"; log_warn "upstream unreachable — using the bundled copy"
+        else
+            rm -f "$tmp"; log_error "could not fetch $PN_URL and no bundled copy at $PN_FALLBACK"; return 1
+        fi
+        grep -qF "$PN_DECL" "$src" \
+            || { rm -f "$tmp"; log_error "no PROJECTS block in $(basename "$PN_FILE") — upstream changed shape"; return 1; }
+        mkdir -p "$(dirname "$PN_FILE")"
+        awk -v decl="$PN_DECL" '
+            index($0, decl) == 1 { print; inblock=1; next }
+            inblock && /^\)/      { print; inblock=0; next }
+            inblock               { next }
+                                  { print }' "$src" > "$PN_FILE"
+        rm -f "$tmp"
+        log_ok "installed $PN_SHOW with an empty registry — add projects with 'cdp add <name>'"
+    else
+        log_warn "$PN_SHOW already exists — left untouched"
+    fi
+
+    if [ "$PN_NEED_SOURCE" -eq 1 ]; then
+        _pn_backup "$PN_RC"
+        if [ "$PN_FLAVOUR" = zsh ]; then
+            # cdp registers its tab completion with compdef, which needs compinit.
+            # Left out when ~/.zshrc (or a framework like oh-my-zsh) already runs it.
+            local compinit_line='autoload -Uz compinit && compinit -C'
+            grep -qE 'compinit|oh-my-zsh\.sh' "$PN_RC" 2>/dev/null && compinit_line=""
+            {
+                echo
+                echo "# >>> new-device-setup: cdp >>>"
+                [ -n "$compinit_line" ] && echo "$compinit_line"
+                echo '[ -f "$HOME/.zsh/project-navigator.zsh" ] && source "$HOME/.zsh/project-navigator.zsh"'
+                echo "# <<< new-device-setup: cdp <<<"
+            } >> "$PN_RC"
+        else
+            cat >> "$PN_RC" <<'EOF'
+
+# >>> new-device-setup: cdp >>>
+[ -f "$HOME/.project-navigator.sh" ] && . "$HOME/.project-navigator.sh"
+# <<< new-device-setup: cdp <<<
+EOF
+        fi
+        log_ok "$PN_RC_SHOW now sources the project navigator"
+    fi
+}
+
+_pn_backup() {
+    local f="$1" b
+    [ -f "$f" ] || return 0
+    b="${f}.backup.$(date +%Y%m%d_%H%M%S)"
+    [ -f "$b" ] || cp "$f" "$b"
+    log_warn "backed up $(basename "$f") -> $(basename "$b")"
+}
+
+# Prints "name<TAB>path" for each registered project, as written in the file.
+pn_entries() {
+    [ -f "$PN_FILE" ] || return 0
+    awk -v decl="$PN_DECL" '
+        index($0, decl) == 1 { inblock=1; next }
+        inblock && /^\)/      { inblock=0; next }
+        inblock && match($0, /^[ \t]*\[\047[^\047]*\047\]=/) {
+            name = substr($0, RSTART, RLENGTH)
+            sub(/^[ \t]*\[\047/, "", name); sub(/\047\]=$/, "", name)
+            val = substr($0, RSTART + RLENGTH)
+            if (val ~ /^".*"$/ || val ~ /^\047.*\047$/) val = substr(val, 2, length(val) - 2)
+            print name "\t" val
+        }' "$PN_FILE"
+}
+
+# pn_register NAME PATH [NAME PATH ...]: one rewrite of the PROJECTS block for
+# the whole batch. Entries not in the batch stay as they are; a name whose path
+# changed is updated in place; missing names are appended. Nothing is written
+# when nothing changes. Keeps a single rolling <file>.bak, like `cdp add`.
+pn_register() {
+    [ $# -ge 2 ] || return 0
+    [ -f "$PN_FILE" ] || { log_error "$PN_SHOW is not installed"; return 1; }
+    grep -qF "$PN_DECL" "$PN_FILE" || { log_error "no PROJECTS block in $PN_SHOW"; return 1; }
+    local batch counts
+    batch="$(mktemp)"; counts="$(mktemp)"
+    while [ $# -ge 2 ]; do
+        printf '%s\t%s\n' "$1" "$2" >> "$batch"
+        shift 2
+    done
+    awk -F'\t' -v decl="$PN_DECL" -v counts="$counts" '
+        NR == FNR { want[$1] = $2; order[++n] = $1; next }
+        index($0, decl) == 1 { inblock=1; print; next }
+        inblock && /^\)/ {
+            for (i = 1; i <= n; i++)
+                if (!(order[i] in seen)) {
+                    printf "    [\047%s\047]=\"%s\"\n", order[i], want[order[i]]; added++
+                }
+            inblock=0; print; next
+        }
+        inblock && match($0, /^[ \t]*\[\047[^\047]*\047\]=/) {
+            name = substr($0, RSTART, RLENGTH)
+            sub(/^[ \t]*\[\047/, "", name); sub(/\047\]=$/, "", name)
+            if (name in want) {
+                seen[name] = 1
+                if (substr($0, RSTART + RLENGTH) != "\"" want[name] "\"") {
+                    printf "    [\047%s\047]=\"%s\"\n", name, want[name]; updated++
+                    next
+                }
+            }
+        }
+        { print }
+        END { print added + 0, updated + 0 > counts }
+    ' "$batch" "$PN_FILE" > "$PN_FILE.tmp" || { rm -f "$batch" "$counts" "$PN_FILE.tmp"; return 1; }
+    local added updated
+    read -r added updated < "$counts"
+    rm -f "$batch" "$counts"
+    if cmp -s "$PN_FILE.tmp" "$PN_FILE"; then
+        rm -f "$PN_FILE.tmp"
+        log_ok "cdp names already registered in $PN_SHOW"
+        return 0
+    fi
+    cp "$PN_FILE" "$PN_FILE.bak" && mv "$PN_FILE.tmp" "$PN_FILE"
+    log_ok "cdp names in $PN_SHOW: $added added, $updated updated (previous copy: $(basename "$PN_FILE").bak)"
+}
+AI_DEV_PAYLOAD_EOF
+
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/agent-instructions/CLAUDE.md" <<'AI_DEV_PAYLOAD_EOF'
 ## Commit Style
 
 - Title: `<emoji> <type>(<scope optional>): <description>`, under 70 characters
@@ -980,7 +1118,7 @@ cat > "$AI_DEV_TMP/agent-instructions/CLAUDE.md" <<'AI_DEV_PAYLOAD_EOF'
 - When delegating, put this in the subagent's spec — don't say "match the existing comment style."
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/agent-instructions/AGENTS.md" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/agent-instructions/AGENTS.md" <<'AI_DEV_PAYLOAD_EOF'
 ## Commit Style
 
 - Title: `<emoji> <type>(<scope optional>): <description>`, under 70 characters
@@ -1011,7 +1149,7 @@ cat > "$AI_DEV_TMP/agent-instructions/AGENTS.md" <<'AI_DEV_PAYLOAD_EOF'
 - When delegating, put this in the subagent's spec — don't say "match the existing comment style."
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/agent-instructions/GEMINI.md" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/agent-instructions/GEMINI.md" <<'AI_DEV_PAYLOAD_EOF'
 ## Commit Style
 
 - Title: `<emoji> <type>(<scope optional>): <description>`, under 70 characters
@@ -1041,7 +1179,7 @@ cat > "$AI_DEV_TMP/agent-instructions/GEMINI.md" <<'AI_DEV_PAYLOAD_EOF'
 - When delegating, put this in the subagent's spec — don't say "match the existing comment style."
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/claude/statusline-command.sh" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/claude/statusline-command.sh" <<'AI_DEV_PAYLOAD_EOF'
 #!/usr/bin/env bash
 # Claude Code statusLine command
 # Format: <model> <effort> | <used>/<total> (<pct%>) | I:<cur>(<total>) O:<cur>(<total>) IC:<cur>(<total>) IW:<cur>(<total>) | $<cost>
@@ -1233,7 +1371,7 @@ fi
 printf '%b\n' "$out"
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/agent-settings/claude-settings.json" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/agent-settings/claude-settings.json" <<'AI_DEV_PAYLOAD_EOF'
 {
   "permissions": {
     "defaultMode": "auto"
@@ -1261,7 +1399,7 @@ cat > "$AI_DEV_TMP/agent-settings/claude-settings.json" <<'AI_DEV_PAYLOAD_EOF'
 }
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/agent-settings/codex-config.toml" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/agent-settings/codex-config.toml" <<'AI_DEV_PAYLOAD_EOF'
 personality = "pragmatic"
 model_verbosity = "medium"
 
@@ -1276,7 +1414,7 @@ show_tooltips = false
 screen_reader_detection_done = true
 AI_DEV_PAYLOAD_EOF
 
-cat > "$AI_DEV_TMP/agent-settings/pi-settings.json" <<'AI_DEV_PAYLOAD_EOF'
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/agent-settings/pi-settings.json" <<'AI_DEV_PAYLOAD_EOF'
 {
   "compaction": {
     "enabled": false
@@ -1290,6 +1428,6 @@ cat > "$AI_DEV_TMP/agent-settings/pi-settings.json" <<'AI_DEV_PAYLOAD_EOF'
 }
 AI_DEV_PAYLOAD_EOF
 
-chmod +x "$AI_DEV_TMP/ai-dev-setup.sh"
+chmod +x "$AI_DEV_TMP/workstation/shared/ai-dev/ai-dev-setup.sh"
 # Run rather than exec: exec would drop the trap that cleans the unpacked copy.
-"$AI_DEV_TMP/ai-dev-setup.sh" "$@"
+"$AI_DEV_TMP/workstation/shared/ai-dev/ai-dev-setup.sh" "$@"

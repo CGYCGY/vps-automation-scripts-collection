@@ -5,10 +5,10 @@
 #   ai-dev-standalone.sh                    Linux, runs ai-dev-setup.sh
 #   macos/ai-dev-setup-macos-standalone.sh  macOS, runs macos/ai-dev-setup-macos.sh
 #
-# Each bundle unpacks its payload in the same layout as this directory, so the
-# setup script resolves agent-instructions/, agent-settings/, claude/ and its
-# project navigator through its own SCRIPT_DIR exactly as it does in a
-# checkout, and stays bundle-unaware.
+# Each bundle unpacks its payload in the same layout as the repository, so the
+# setup script resolves agent-instructions/, agent-settings/, claude/ and the
+# shared project-navigator helper through its own SCRIPT_DIR exactly as it does
+# in a checkout, and stays bundle-unaware.
 #
 # Output is byte-deterministic — rebuilding without a source change produces no
 # diff — so nothing emitted below may carry a timestamp, hostname or path.
@@ -19,31 +19,35 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
-# Everything each setup script reads from its own directory at run time, entry
-# script first. README.md is deliberately absent: it documents the repository,
-# not the install.
+# Everything each setup script reads at run time, as paths from the repository
+# root, entry script first. README.md is deliberately absent: it documents the
+# repository, not the install.
+AI=workstation/shared/ai-dev
 LINUX_PAYLOAD=(
-    ai-dev-setup.sh
-    project-navigator.sh
-    agent-instructions/CLAUDE.md
-    agent-instructions/AGENTS.md
-    agent-instructions/GEMINI.md
-    claude/statusline-command.sh
-    agent-settings/claude-settings.json
-    agent-settings/codex-config.toml
-    agent-settings/pi-settings.json
+    $AI/ai-dev-setup.sh
+    $AI/project-navigator.sh
+    shared/lib/project-navigator-lib.sh
+    $AI/agent-instructions/CLAUDE.md
+    $AI/agent-instructions/AGENTS.md
+    $AI/agent-instructions/GEMINI.md
+    $AI/claude/statusline-command.sh
+    $AI/agent-settings/claude-settings.json
+    $AI/agent-settings/codex-config.toml
+    $AI/agent-settings/pi-settings.json
 )
 MACOS_PAYLOAD=(
-    macos/ai-dev-setup-macos.sh
-    macos/project-navigator.zsh
-    agent-instructions/CLAUDE.md
-    agent-instructions/AGENTS.md
-    agent-instructions/GEMINI.md
-    claude/statusline-command.sh
-    agent-settings/claude-settings.json
-    agent-settings/codex-config.toml
-    agent-settings/pi-settings.json
+    $AI/macos/ai-dev-setup-macos.sh
+    $AI/macos/project-navigator.zsh
+    shared/lib/project-navigator-lib.sh
+    $AI/agent-instructions/CLAUDE.md
+    $AI/agent-instructions/AGENTS.md
+    $AI/agent-instructions/GEMINI.md
+    $AI/claude/statusline-command.sh
+    $AI/agent-settings/claude-settings.json
+    $AI/agent-settings/codex-config.toml
+    $AI/agent-settings/pi-settings.json
 )
 
 # A payload line equal to this would close its heredoc early and corrupt the
@@ -55,7 +59,7 @@ die() { printf 'build-standalone: %s\n' "$1" >&2; exit 1; }
 check_sources() {
     local f path
     for f in "$@"; do
-        path="${SCRIPT_DIR}/${f}"
+        path="${REPO_ROOT}/${f}"
         [ -f "$path" ] || die "missing source: $f"
         if grep -qxF "$DELIM" "$path"; then
             die "$f contains a line equal to $DELIM — change DELIM in this script"
@@ -102,7 +106,7 @@ HEADER
 
     for f in "$@"; do
         printf '\ncat > "$AI_DEV_TMP/%s" <<'\''%s'\''\n' "$f" "$DELIM"
-        cat "${SCRIPT_DIR}/${f}"
+        cat "${REPO_ROOT}/${f}"
         printf '%s\n' "$DELIM"
     done
 

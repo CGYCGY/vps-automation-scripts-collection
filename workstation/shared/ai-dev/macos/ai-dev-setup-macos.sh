@@ -45,13 +45,15 @@ ALIAS_DEFS=(
     'jj|alias jj="just"'
 )
 
-# Project navigation (cdp) is maintained in CGYCGY/shell-utils; macOS gets the
-# zsh edition. Upstream is fetched first so a new Mac gets the current version;
-# the copy beside this script is the offline fallback. Refresh it now and then:
-#   curl -fsSL $PN_URL -o workstation/shared/ai-dev/macos/project-navigator.zsh
-PN_URL="https://raw.githubusercontent.com/CGYCGY/shell-utils/master/zsh/profile-scripts/project-navigator.zsh"
-PN_FALLBACK="${SCRIPT_DIR}/project-navigator.zsh"
-PN_FILE="$HOME/.zsh/project-navigator.zsh"
+# Project navigation (cdp): install and fallback copy live in the shared helper,
+# which the projects module uses too. A lone copy of this script has no helper;
+# detect_project_navigator reports that below.
+PN_LIB="${SCRIPT_DIR}/../../../../shared/lib/project-navigator-lib.sh"
+if [ -f "$PN_LIB" ]; then
+    # shellcheck source=../../../../shared/lib/project-navigator-lib.sh
+    . "$PN_LIB"
+    pn_init zsh
+fi
 
 # Shared with the Linux script.
 INSTRUCTION_FILES=(
@@ -75,9 +77,9 @@ CODEX_CONFIG="$HOME/.codex/config.toml"
 PI_DEFAULTS="${SCRIPT_DIR}/../agent-settings/pi-settings.json"
 PI_SETTINGS="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/settings.json"
 
-# Both of the above read files that sit beside this script in a checkout or in
-# the standalone bundle. A lone copy of this script has neither, and the survey
-# says so rather than reporting the step as done.
+# Both of the above, and the project navigator, read files that sit beside this
+# script in a checkout or in the standalone bundle. A lone copy of this script
+# has none of them, and the survey says so rather than reporting the step as done.
 NO_SOURCES="source files missing — run ai-dev-setup-macos-standalone.sh or a checkout"
 
 STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/new-device-setup"
@@ -431,26 +433,18 @@ detect_agent_settings() {
     return 1
 }
 
-# Two independent halves: the file, and ~/.zshrc sourcing it. Either can already
-# be in place on its own, so both are checked and only the missing half is done.
-PN_NEED_FILE=0
-PN_NEED_SOURCE=0
-
 detect_project_navigator() {
-    PN_NEED_FILE=0; PN_NEED_SOURCE=0
-    [ -f "$PN_FILE" ] || PN_NEED_FILE=1
-    grep -q 'project-navigator\.zsh' "$ZSHRC" 2>/dev/null || PN_NEED_SOURCE=1
-
-    if [ "$PN_NEED_FILE" -eq 0 ] && [ "$PN_NEED_SOURCE" -eq 0 ]; then
-        local n
-        n="$(grep -c "^[[:space:]]*\['" "$PN_FILE" 2>/dev/null || true)"
-        DETAIL="cdp ready, ${n:-0} project(s) registered"
+    if [ ! -f "$PN_LIB" ]; then
+        DETAIL="$NO_SOURCES"
+        return 2
+    fi
+    if pn_detect; then
+        DETAIL="cdp ready, $(pn_count) project(s) registered"
         return 0
     fi
-
     local what=""
-    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install ~/.zsh/project-navigator.zsh "
-    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from ~/.zshrc"
+    [ "$PN_NEED_FILE" -eq 1 ]   && what+="install $PN_SHOW "
+    [ "$PN_NEED_SOURCE" -eq 1 ] && what+="source it from $PN_RC_SHOW"
     DETAIL="will ${what% }"
     return 1
 }
@@ -658,49 +652,8 @@ install_agent_settings() {
     rm -f "$tmp"
 }
 
-# The upstream registry is example paths, so it is emptied on the way in —
-# populate with `cdp add <name>`, which rewrites the file in place. An existing
-# file is never touched: it holds that device's own registry.
-install_project_navigator() {
-    if [ "$PN_NEED_FILE" -eq 1 ]; then
-        local src tmp
-        tmp="$(mktemp)"
-        if curl -fsSL --retry 3 --max-time 30 "$PN_URL" -o "$tmp" 2>/dev/null; then
-            src="$tmp"; log_info "fetched project-navigator.zsh from shell-utils"
-        elif [ -f "$PN_FALLBACK" ]; then
-            src="$PN_FALLBACK"; log_warn "upstream unreachable — using the bundled copy"
-        else
-            rm -f "$tmp"; log_error "could not fetch $PN_URL and no bundled copy at $PN_FALLBACK"; return 1
-        fi
-        grep -q '^typeset -gA PROJECTS=(' "$src" \
-            || { rm -f "$tmp"; log_error "no PROJECTS block in project-navigator.zsh — upstream changed shape"; return 1; }
-        mkdir -p "$(dirname "$PN_FILE")"
-        awk '/^typeset -gA PROJECTS=\(/ { print; inblock=1; next }
-             inblock && /^\)/          { print; inblock=0; next }
-             inblock                    { next }
-                                        { print }' "$src" > "$PN_FILE"
-        rm -f "$tmp"
-        log_ok "installed ~/.zsh/project-navigator.zsh with an empty registry — add projects with 'cdp add <name>'"
-    else
-        log_warn "~/.zsh/project-navigator.zsh already exists — left untouched"
-    fi
-
-    if [ "$PN_NEED_SOURCE" -eq 1 ]; then
-        backup_once "$ZSHRC"
-        # cdp registers its tab completion with compdef, which needs compinit.
-        # Left out when ~/.zshrc (or a framework like oh-my-zsh) already runs it.
-        local compinit_line='autoload -Uz compinit && compinit -C'
-        grep -qE 'compinit|oh-my-zsh\.sh' "$ZSHRC" 2>/dev/null && compinit_line=""
-        {
-            echo
-            echo "# >>> new-device-setup: cdp >>>"
-            [ -n "$compinit_line" ] && echo "$compinit_line"
-            echo '[ -f "$HOME/.zsh/project-navigator.zsh" ] && source "$HOME/.zsh/project-navigator.zsh"'
-            echo "# <<< new-device-setup: cdp <<<"
-        } >> "$ZSHRC"
-        log_ok "~/.zshrc now sources the project navigator"
-    fi
-}
+# Populate the registry with `cdp add <name>` or the projects module.
+install_project_navigator() { pn_install; }
 
 install_aliases() {
     backup_once "$ZSHRC"

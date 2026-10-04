@@ -68,7 +68,7 @@ and every flag is passed through to it.
 | Shared (Linux) | **Swap Config** | RAM-based optimized swap settings | [shared/linux/swap/README.md](shared/linux/swap/README.md) |
 | Workstation | **Mac Setup** | Homebrew apps, Tailscale SSH, power, Finder, Zed settings, git and GitHub key, plus the AI dev toolchain | [workstation/macos/README.md](workstation/macos/README.md) |
 | Workstation | **Projects** | Clone your repos into the same folder layout on every machine and register each with `cdp`; optional, from a JSONC list | [workstation/shared/projects/README.md](workstation/shared/projects/README.md) |
-| Workstation | **Agent Skills** | Link the agent skills into `~/.claude/skills` from your projects checkout or a clone in `~/.gylab/<repo>`; optional | [workstation/shared/skills/README.md](workstation/shared/skills/README.md) |
+| Workstation | **Agent Skills** | Put the agent skills in `~/.claude/skills`: links from your projects checkout or a clone in `~/.gylab/<repo>`, and the library catalog cloned in place; optional | [workstation/shared/skills/README.md](workstation/shared/skills/README.md) |
 | Workstation | **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available; [macOS version](workstation/shared/ai-dev/macos/README.md)) | [workstation/shared/ai-dev/README.md](workstation/shared/ai-dev/README.md) |
 
 ## Supported Systems

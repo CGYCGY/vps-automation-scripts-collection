@@ -1,7 +1,8 @@
 # Agent Skills
 
-Puts the same agent skills on every machine. Each skill in `skills.json` is
-linked into `~/.claude/skills/<name>` from a checkout of the repo that owns it.
+Puts the same agent skills on every machine. Each skill in `skills.json` ends
+up at `~/.claude/skills/<name>`, either as a link into a checkout of the repo
+that owns it or as a clone of that repo (see [Install Modes](#install-modes)).
 
 ```bash
 ./workstation/shared/skills/skills.sh            # run it alone
@@ -23,7 +24,7 @@ fine.
 ```jsonc
 {
   "skills": [
-    { "name": "library", "repo": "git@github.com:you/skill-catalog.git", "path": "." },
+    { "name": "library", "repo": "git@github.com:you/skill-catalog.git", "install": "clone" },
     { "name": "gen-image", "repo": "git@github.com:CGYCGY/gen-image.git", "path": ".claude/skills/gen-image",
       "setup": "setup.sh -y" }
   ]
@@ -32,15 +33,33 @@ fine.
 
 | Key | Meaning |
 |-----|---------|
-| `name` | The link name under `~/.claude/skills/`. Letters, digits, `.` `_` `-` |
+| `name` | The name under `~/.claude/skills/`. Letters, digits, `.` `_` `-` |
 | `repo` | The repo that owns the skill |
-| `path` | The skill folder inside the repo. `.` is the whole repo. Relative, no `..` |
+| `install` | Optional. `link` (the default) or `clone`, see [Install Modes](#install-modes) |
+| `path` | Link mode only. The skill folder inside the repo. `.` is the whole repo. Relative, no `..` |
 | `setup` | Optional. A command run from the checkout root (see [Setup Commands](#setup-commands)) |
 
-The list is checked every time it is read: every skill with a name, a repo and
-a path, names unique. A problem names the skill.
+The list is checked every time it is read: every skill with a name and a repo,
+a `path` for link mode and none for clone mode, names unique. A problem names
+the skill.
 
-## Where the Checkout Comes From
+## Install Modes
+
+- **`link`**, the default: `~/.claude/skills/<name>` is a link to the skill
+  folder inside a checkout of the repo. The checkout is your projects one or a
+  clone in `~/.gylab/<repo>` (see below). gen-image and deploy-via-manager work
+  this way: the skill is one folder of a larger tool repo.
+- **`clone`**: the repo itself is cloned to `~/.claude/skills/<name>`. No link,
+  no `~/.gylab`, and `projects.json` is not consulted. `library`
+  (skill-catalog) works this way: the whole repo is a catalog of installable
+  skills and is meant to live there.
+
+A clone-mode skill is cloned when `~/.claude/skills/<name>` is missing or an
+empty folder. A clone of the repo there is left as it is: never pulled,
+fetched or reset. A link, a clone of another repo, or a folder that isn't a
+clone is reported and left alone.
+
+## Where a Linked Skill's Checkout Comes From
 
 The first match wins:
 
@@ -66,6 +85,8 @@ beside them, as the skill's own installer would do.
 
 ## Links
 
+For link-mode skills:
+
 | Found at `~/.claude/skills/<name>` | Result |
 |------------------------------------|--------|
 | Nothing | Linked |
@@ -84,9 +105,10 @@ installing the skill alone, which clones and then calls the root one. This
 module has its own checkout, so it runs only the root one.
 
 `setup` runs from the checkout root when the link was just made (or moved to
-another checkout), or when `~/.gylab/<repo>/config.json` is missing. That file
-is the sign the setup finished, so a failed or interrupted setup is retried on
-the next run and a working one is left alone. Nothing is recorded by this
+another checkout) or the clone-mode clone was just made, or when
+`~/.gylab/<repo>/config.json` is missing. That file is the sign the setup
+finished, so a failed or interrupted setup is retried on the next run and a
+working one is left alone. Nothing is recorded by this
 module. When the first word is a file in the checkout root, it runs with
 `bash`, so `setup.sh` needs no `./` and no executable bit.
 
@@ -107,9 +129,9 @@ skips them and says so.
 
 | State | Meaning |
 |-------|---------|
-| `present` | Linked to the right folder, and set up when the skill has a `setup` |
-| `partial` | Linked, setup pending: `~/.gylab/<repo>/config.json` is missing. Or a real folder at the link path, or a link to the wrong place |
-| `missing` | Not linked yet: where it will link from, or where it will clone to |
+| `present` | Linked to the right folder, or (clone mode) a clone of the repo at `~/.claude/skills/<name>`; set up when the skill has a `setup` |
+| `partial` | Linked or cloned, setup pending: `~/.gylab/<repo>/config.json` is missing. Or something in the way: a real folder at a link path, a link to the wrong place, or (clone mode) a link, another repo's clone or a non-clone folder |
+| `missing` | Not there yet: where it will link from, or where it will clone to |
 
 A `skills-list` row shows instead when the list is missing or unreadable.
 

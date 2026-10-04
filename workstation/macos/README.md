@@ -41,7 +41,7 @@ macOS ships, so nothing has to be installed first.
 | `zed.sh` | Merges `zed-settings.json` into Zed's settings when Zed is installed: panel docks, Ayu themes, telemetry off. Only values that differ from Zed's defaults are tracked. The rewrite drops the file's comments, so the original is kept as a `.backup.*` copy |
 | `ssh.sh` | Git identity, GitHub https URLs through SSH, a GitHub key in the Keychain, and Remote Login off |
 | [`projects.sh`](../shared/projects/README.md) | Optional, one question. Clones the repos in your projects list and registers each name with `cdp` |
-| [`skills.sh`](../shared/skills/README.md) | Optional, one question. Links each agent skill into `~/.claude/skills` from your projects checkout, or from a clone in `~/.gylab/<repo>` |
+| [`skills.sh`](../shared/skills/README.md) | Optional, one question. Links each agent skill into `~/.claude/skills` from your projects checkout, or from a clone in `~/.gylab/<repo>`; the library catalog is cloned straight to `~/.claude/skills/library` |
 
 Each module also runs alone, e.g. `./workstation/macos/power.sh --status` or
 `./workstation/shared/projects/projects.sh`.

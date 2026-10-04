@@ -1,9 +1,11 @@
 #!/bin/bash
-# Links the agent skills in skills.json into ~/.claude/skills. A skill's repo
-# comes from the projects checkout when projects.json lists it, else from a
-# clone in ~/.gylab/<repo>. Never replaces a real folder at a link path, and
-# never pulls or resets a clone. A skill's setup runs in the checkout root
-# while ~/.gylab/<repo>/config.json is absent: the repo's setup.sh writes it.
+# Puts the agent skills in skills.json into ~/.claude/skills. A link-mode
+# skill is a link into its repo's checkout: the projects checkout when
+# projects.json lists the repo, else a clone in ~/.gylab/<repo>. A clone-mode
+# skill is a clone of its repo at ~/.claude/skills/<name> itself. Never
+# replaces a real folder or a link it doesn't own, and never pulls or resets a
+# clone. A skill's setup runs in the checkout root while
+# ~/.gylab/<repo>/config.json is absent: the repo's setup.sh writes it.
 
 set -e
 
@@ -27,11 +29,13 @@ module_help() {
     cat <<EOF
 Usage: $0 [-y] [--status] [--phase ...]
 
-Links every skill in skills.json into ~/.claude/skills. The skill's repo is
-used from your projects checkout when projects.json lists it, else cloned into
-~/.gylab/<repo>. A real folder at a link path is never replaced. A skill's setup
-command, if it has one, runs in the checkout root when the link is new or
-~/.gylab/<repo>/config.json is missing.
+Puts every skill in skills.json into ~/.claude/skills, in one of two modes:
+  link (default)  a link into the repo: your projects checkout when
+                  projects.json lists it, else a clone in ~/.gylab/<repo>
+  clone           the repo itself cloned to ~/.claude/skills/<name>
+A real folder, or a link the mode doesn't own, is never replaced, and a clone
+is never pulled. A skill's setup command, if it has one, runs in the checkout
+root when the link or clone is new or ~/.gylab/<repo>/config.json is missing.
 
 Answers can be given up front as environment variables:
   SKILLS_SETUP    yes | no   set up the skills (asked only from workstation/setup.sh)
@@ -89,9 +93,11 @@ def basename: sub("/+$"; "") | split("/") | last | split(":") | last | sub("\\.g
             elif (.repo | type) != "string" or .repo == "" then "\($w): no repo"
             elif (.repo | test("[\\\\\t\n]")) then "\($w): the repo has a backslash or control character"
             elif (.repo | basename | . == "" or . == "." or . == "..") then "\($w): the repo URL ends without a repo name"
-            elif (.path | type) != "string" or .path == "" then "\($w): no path"
-            elif (.path | badpath) then "\($w): the path must be relative to the repo, without .."
-            elif (.path | badchars) then "\($w): the path has a quote, $, backtick, backslash or control character"
+            elif has("install") and .install != "link" and .install != "clone" then "\($w): install must be \"link\" or \"clone\""
+            elif .install == "clone" and has("path") then "\($w): path does not apply to install \"clone\", which clones the whole repo to ~/.claude/skills/\(.name)"
+            elif .install != "clone" and ((.path | type) != "string" or .path == "") then "\($w): no path"
+            elif .install != "clone" and (.path | badpath) then "\($w): the path must be relative to the repo, without .."
+            elif .install != "clone" and (.path | badchars) then "\($w): the path has a quote, $, backtick, backslash or control character"
             elif has("setup") and ((.setup | type) != "string" or .setup == "") then "\($w): setup must be a non-empty string"
             elif has("setup") and (.setup | test("[\\\\\t\n]")) then "\($w): setup has a backslash or control character"
             else empty end),
@@ -115,10 +121,11 @@ load_list() {
     LIST_JSON="$json"
 }
 
-# name <TAB> repo <TAB> path <TAB> setup; setup last because read drops empty
-# tab-separated fields in the middle.
+# name <TAB> repo <TAB> install <TAB> path <TAB> setup; setup last because
+# read drops empty tab-separated fields in the middle, which is also why a
+# clone-mode skill gets a placeholder path it never uses.
 list_skills() {
-    printf '%s' "$LIST_JSON" | jq -r '.skills[] | [.name, .repo, .path, (.setup // "")] | @tsv'
+    printf '%s' "$LIST_JSON" | jq -r '.skills[] | [.name, .repo, (.install // "link"), (.path // "."), (.setup // "")] | @tsv'
 }
 
 # Sets PROJ_CLONES, "dir <TAB> url" per clone the projects list names. Empty
@@ -206,17 +213,50 @@ EOF
     fi
 }
 
-# A ~/.gylab/<repo> folder may hold only the tool's config.json and state/,
-# left by a setup run against a projects checkout that is gone; the clone can
-# go in beside them since the repos gitignore both.
-only_tool_data() {
-    local f
-    [ -d "$1" ] || return 1
-    for f in "$1"/* "$1"/.[!.]*; do
+# only_holds DIR NAME...: DIR is a folder with nothing in it but NAMEs.
+only_holds() {
+    local d="$1" f n ok
+    shift
+    [ -d "$d" ] || return 1
+    for f in "$d"/* "$d"/.[!.]*; do
         [ -e "$f" ] || continue
-        case "${f##*/}" in config.json|state|.DS_Store) ;; *) return 1 ;; esac
+        ok=""
+        for n in "$@"; do [ "${f##*/}" = "$n" ] && ok=1; done
+        [ -n "$ok" ] || return 1
     done
     return 0
+}
+
+# A ~/.gylab/<repo> folder may hold only the tool's config.json and state/,
+# left by a setup run against a projects checkout that is gone; the clone can
+# go in beside them since the repos gitignore both. Finder drops .DS_Store
+# into any folder it opens.
+only_tool_data() { only_holds "$1" config.json state .DS_Store; }
+
+# A clone-mode skill's clone is ~/.claude/skills/<name> itself. Sets the same
+# globals as resolve; a link there is never followed, so a link-mode leftover
+# pointing at a clone of the repo still counts as in the way.
+resolve_clone() {
+    local dir="$SKILLS_DIR/$1"
+    CHECKOUT="$dir"; FROM=skills; STATE=""; WHY=""; LISTED=""
+    if [ -L "$dir" ]; then
+        STATE=blocked
+        WHY="$(tilde "$dir") is a link to $(tilde "$(readlink "$dir")")"
+    elif same_repo "$dir" "$2"; then
+        STATE=ready
+    elif [ -e "$dir/.git" ]; then
+        STATE=blocked
+        WHY="$(tilde "$dir") is a clone of $(git -C "$dir" remote get-url origin 2>/dev/null || echo "another repo")"
+    elif [ -e "$dir" ] && ! only_holds "$dir" .DS_Store; then
+        STATE=blocked
+        WHY="$(tilde "$dir") is not a clone"
+    else
+        STATE=clone
+    fi
+}
+
+locate() {
+    if [ "$3" = clone ]; then resolve_clone "$1" "$2"; else resolve "$2"; fi
 }
 
 # git clone refuses a non-empty folder, so an existing one is filled in place.
@@ -319,9 +359,18 @@ link_and_setup() {
     run_setup "$name" "$3" "$CHECKOUT"
 }
 
-# Reads the globals the last resolve set.
+# Reads the globals the last locate set.
 describe() {
-    local name="$1" path="$2" target out
+    local name="$1" path="$2" install="$3" target out
+    if [ "$install" = clone ]; then
+        case "$STATE" in
+            ready) out="$(tilde "$CHECKOUT") (clone)" ;;
+            clone) out="$(tilde "$CHECKOUT") (will clone)" ;;
+            blocked) out="$WHY; left alone" ;;
+        esac
+        printf '%s' "$out"
+        return 0
+    fi
     target="$(join_path "$CHECKOUT" "$path")"
     case "$STATE" in
         ready)
@@ -342,11 +391,11 @@ describe() {
 }
 
 show_list() {
-    local name repo path setup
-    echo "Skills in $(tilde "$SKILLS_FILE"), linked into $(tilde "$SKILLS_DIR"):"
-    while IFS=$'\t' read -r name repo path setup <&3; do
-        resolve "$repo"
-        printf '  %-20s %s\n' "$name" "$(describe "$name" "$path")"
+    local name repo install path setup
+    echo "Skills in $(tilde "$SKILLS_FILE"), put in $(tilde "$SKILLS_DIR"):"
+    while IFS=$'\t' read -r name repo install path setup <&3; do
+        locate "$name" "$repo" "$install"
+        printf '  %-20s %s\n' "$name" "$(describe "$name" "$path" "$install")"
     done 3< <(list_skills)
 }
 
@@ -365,14 +414,15 @@ probe() {
     ) 2> /dev/null
 }
 
-# Sets PENDING, "dir <TAB> repo" per repo to clone into ~/.gylab. A skill
+# Sets PENDING, "dir <TAB> repo" per clone to make: into ~/.gylab for a
+# link-mode skill, ~/.claude/skills for a clone-mode one. A link-mode skill
 # whose link path is a real folder can't be linked, so its repo isn't cloned.
 collect_pending() {
-    local name repo path setup
+    local name repo install path setup
     PENDING=""
-    while IFS=$'\t' read -r name repo path setup <&3; do
-        folder_in_way "$name" && continue
-        resolve "$repo"
+    while IFS=$'\t' read -r name repo install path setup <&3; do
+        [ "$install" != clone ] && folder_in_way "$name" && continue
+        locate "$name" "$repo" "$install"
         [ "$STATE" = clone ] || continue
         case $'\n'"$PENDING" in *$'\n'"$CHECKOUT"$'\t'*) continue ;; esac
         PENDING="$PENDING$CHECKOUT"$'\t'"$repo"$'\n'
@@ -411,18 +461,21 @@ check_access() {
     rm -f "$errf"
 }
 
+# Sets CLONED, one dir per line, for the setup of a clone-mode skill.
 clone_pending() {
     local dir url cloned=0 failed=0 skipped=0
-    mkdir -p "$GYLAB"
+    CLONED=""
     while IFS=$'\t' read -r dir url <&3; do
         if printf '%s' "$FAILED_URLS" | grep -qxF "$url"; then
             skipped=$((skipped + 1))
             continue
         fi
         log_info "${dir##*/}: cloning into $(tilde "$dir")"
+        mkdir -p "${dir%/*}"
         if clone_into "$url" "$dir"; then
             log_ok "${dir##*/} cloned"
             cloned=$((cloned + 1))
+            CLONED="$CLONED$dir"$'\n'
         else
             log_error "${dir##*/}: git clone $url failed"
             failed=$((failed + 1))
@@ -435,6 +488,21 @@ clone_pending() {
 
 enabled() { [ "${SKILLS_SETUP:-yes}" != no ]; }
 
+# status_clone NAME REPO SETUP: reads the globals resolve_clone set.
+status_clone() {
+    case "$STATE" in
+        ready)
+            if [ -n "$3" ] && [ ! -f "$(setup_marker "$2")" ]; then
+                status_row "$1" partial "clone, setup pending (no $(tilde "$(setup_marker "$2")")); will run $3"
+            else
+                status_row "$1" present "clone at $(tilde "$CHECKOUT")"
+            fi
+            ;;
+        clone) status_row "$1" missing "will clone $2 to $(tilde "$CHECKOUT")" ;;
+        blocked) status_row "$1" partial "$WHY; left alone" ;;
+    esac
+}
+
 module_status() {
     if [ ! -f "$SKILLS_FILE" ]; then
         status_row skills-list missing "no $(tilde "$SKILLS_FILE")"
@@ -445,8 +513,13 @@ module_status() {
         return 0
     fi
     load_projects
-    local name repo path setup target next
-    while IFS=$'\t' read -r name repo path setup <&3; do
+    local name repo install path setup target next
+    while IFS=$'\t' read -r name repo install path setup <&3; do
+        if [ "$install" = clone ]; then
+            resolve_clone "$name" "$repo"
+            status_clone "$name" "$repo" "$setup"
+            continue
+        fi
         resolve "$repo"
         target="$(join_path "$CHECKOUT" "$path")"
         case "$STATE" in
@@ -508,9 +581,22 @@ module_auto() {
     load_list || die "$LIST_ERR"
     load_projects
     log_step "Agent skills: links"
-    mkdir -p "$SKILLS_DIR" "$GYLAB"
-    local name repo path setup
-    while IFS=$'\t' read -r name repo path setup <&3; do
+    mkdir -p "$SKILLS_DIR"
+    local name repo install path setup
+    while IFS=$'\t' read -r name repo install path setup <&3; do
+        if [ "$install" = clone ]; then
+            resolve_clone "$name" "$repo"
+            case "$STATE" in
+                clone) N_WAIT=$((N_WAIT + 1)) ;;
+                blocked) log_warn "$name: $WHY, left alone"; N_LEFT=$((N_LEFT + 1)) ;;
+                ready)
+                    N_PRESENT=$((N_PRESENT + 1))
+                    [ -n "$setup" ] && [ ! -f "$(setup_marker "$repo")" ] &&
+                        run_setup "$name" "$setup" "$CHECKOUT"
+                    ;;
+            esac
+            continue
+        fi
         if folder_in_way "$name"; then
             log_warn "$name: $(tilde "$SKILLS_DIR/$name") exists and is not a link, left alone (move it away to let skills.sh manage it)"
             N_LEFT=$((N_LEFT + 1))
@@ -523,7 +609,7 @@ module_auto() {
         esac
         link_and_setup "$name" "$path" "$setup" "$repo"
     done 3< <(list_skills)
-    log_ok "Skills: $N_LINKED linked, $N_PRESENT already linked, $N_LEFT left alone, $N_WAIT waiting for a clone"
+    log_ok "Skills: $N_LINKED linked, $N_PRESENT already in place, $N_LEFT left alone, $N_WAIT waiting for a clone"
 }
 
 module_interactive() {
@@ -531,6 +617,7 @@ module_interactive() {
     load_list || die "$LIST_ERR"
     load_projects
     collect_pending
+    CLONED=""
     if [ -n "$PENDING" ]; then
         log_step "Agent skills: repo access"
         while :; do
@@ -559,21 +646,32 @@ module_interactive() {
     fi
 
     # Also catches a repo projects.sh cloned after this module's auto phase.
-    local name repo path setup header=""
-    while IFS=$'\t' read -r name repo path setup <&3; do
+    # A clone-mode skill's existing clone had its setup in the auto phase, so
+    # only one cloned just now runs it here.
+    local name repo install path setup header=""
+    while IFS=$'\t' read -r name repo install path setup <&3; do
+        if [ "$install" = clone ]; then
+            [ -n "$setup" ] || continue
+            case $'\n'"$CLONED" in *$'\n'"$SKILLS_DIR/$name"$'\n'*) ;; *) continue ;; esac
+            resolve_clone "$name" "$repo"
+            [ "$STATE" = ready ] || continue
+            [ -n "$header" ] || { log_step "Agent skills: links and setup"; header=1; }
+            run_setup "$name" "$setup" "$CHECKOUT"
+            continue
+        fi
         folder_in_way "$name" && continue
         resolve "$repo"
         [ "$STATE" = ready ] && [ -d "$(join_path "$CHECKOUT" "$path")" ] || continue
         link_state "$name" "$(join_path "$CHECKOUT" "$path")"
         [ "$LINK" = correct ] && continue
-        [ -n "$header" ] || { log_step "Agent skills: links"; header=1; }
+        [ -n "$header" ] || { log_step "Agent skills: links and setup"; header=1; }
         link_and_setup "$name" "$path" "$setup" "$repo"
     done 3< <(list_skills)
 }
 
 module_summary() {
     enabled || return 0
-    note "- Skills: edit $(tilde "$SKILLS_FILE") and run $(tilde "$SKILLS_HOME")/skills.sh again to add one. A repo projects.sh clones later becomes the link's target on the next run."
+    note "- Skills: edit $(tilde "$SKILLS_FILE") and run $(tilde "$SKILLS_HOME")/skills.sh again to add one. For a linked skill, a repo projects.sh clones later becomes the link's target on the next run."
 }
 
 SKILLS_CHAINED=""

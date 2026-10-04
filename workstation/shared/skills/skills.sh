@@ -1,8 +1,9 @@
 #!/bin/bash
 # Links the agent skills in skills.json into ~/.claude/skills. A skill's repo
 # comes from the projects checkout when projects.json lists it, else from a
-# clone in ~/.gylab/repos. Never replaces a real folder at a link path, and
-# never pulls or resets a clone.
+# clone in ~/.gylab/<repo>. Never replaces a real folder at a link path, and
+# never pulls or resets a clone. A skill's setup runs in the checkout root
+# while ~/.gylab/<repo>/config.json is absent: the repo's setup.sh writes it.
 
 set -e
 
@@ -19,7 +20,7 @@ fi
 SKILLS_FILE="${SKILLS_FILE:-$SKILLS_HOME/skills.json}"
 PROJECTS_FILE="${PROJECTS_FILE:-$REPO_ROOT/workstation/shared/projects/projects.json}"
 SKILLS_DIR="$HOME/.claude/skills"
-GYLAB_REPOS="$HOME/.gylab/repos"
+GYLAB="$HOME/.gylab"
 ACCESS_TIMEOUT=20
 
 module_help() {
@@ -28,8 +29,9 @@ Usage: $0 [-y] [--status] [--phase ...]
 
 Links every skill in skills.json into ~/.claude/skills. The skill's repo is
 used from your projects checkout when projects.json lists it, else cloned into
-~/.gylab/repos. A real folder at a link path is never replaced. A skill's setup
-command, if it has one, runs after its link is in place.
+~/.gylab/<repo>. A real folder at a link path is never replaced. A skill's setup
+command, if it has one, runs in the checkout root when the link is new or
+~/.gylab/<repo>/config.json is missing.
 
 Answers can be given up front as environment variables:
   SKILLS_SETUP    yes | no   set up the skills (asked only from workstation/setup.sh)
@@ -189,7 +191,7 @@ resolve() {
     done <<EOF
 $PROJ_CLONES
 EOF
-    dir="$GYLAB_REPOS/$(repo_dir_name "$repo")"
+    dir="$GYLAB/$(repo_dir_name "$repo")"
     CHECKOUT="$dir"; FROM=gylab
     if same_repo "$dir" "$repo"; then
         STATE=ready
@@ -262,28 +264,18 @@ link_skill() {
     LINKED=yes
 }
 
-# Not ${s//...}: bash 5.2 treats & in the replacement as the matched text.
-subst_repo() {
-    local s="$1" out=""
-    while :; do
-        case "$s" in
-            *"{repo}"*) out="$out${s%%"{repo}"*}$2"; s="${s#*"{repo}"}" ;;
-            *) break ;;
-        esac
-    done
-    printf '%s' "$out$s"
-}
+# The repo's own setup writes this file, so its absence means the setup never
+# finished. Detected, never recorded here.
+setup_marker() { printf '%s' "$GYLAB/$(repo_dir_name "$1")/config.json"; }
 
-# run_setup NAME COMMAND CHECKOUT SKILL_DIR
+# run_setup NAME COMMAND CHECKOUT
 run_setup() {
-    local name="$1" cmd rc=0
-    [ -n "$2" ] || return 0
-    cmd="$(subst_repo "$2" "$(printf '%q' "$3")")"
-    # A script in the skill folder runs as written in the list: no ./ and no
+    local name="$1" cmd="$2" rc=0
+    # A script in the checkout root runs as written in the list: no ./ and no
     # executable bit needed.
-    [ -f "$4/${cmd%% *}" ] && cmd="bash ./$cmd"
-    log_info "$name: running $cmd"
-    (cd "$4" && bash -c "$cmd") || rc=$?
+    [ -f "$3/${cmd%% *}" ] && cmd="bash ./$cmd"
+    log_info "$name: running $cmd in $(tilde "$3")"
+    (cd "$3" && bash -c "$cmd") || rc=$?
     if [ "$rc" -eq 0 ]; then
         log_ok "$name: setup done"
     else
@@ -292,12 +284,14 @@ run_setup() {
     fi
 }
 
+# link_and_setup NAME PATH SETUP REPO
 link_and_setup() {
     local name="$1" target
     target="$(join_path "$CHECKOUT" "$2")"
     link_skill "$name" "$target"
-    [ "$LINKED" = yes ] || return 0
-    run_setup "$name" "$3" "$CHECKOUT" "$target"
+    [ "$LINKED" = yes ] && [ -n "$3" ] || return 0
+    [ "$LINK" = correct ] && [ -f "$(setup_marker "$4")" ] && return 0
+    run_setup "$name" "$3" "$CHECKOUT"
 }
 
 # Reads the globals the last resolve set.
@@ -346,7 +340,7 @@ probe() {
     ) 2> /dev/null
 }
 
-# Sets PENDING, "dir <TAB> repo" per repo to clone into ~/.gylab/repos. A skill
+# Sets PENDING, "dir <TAB> repo" per repo to clone into ~/.gylab. A skill
 # whose link path is a real folder can't be linked, so its repo isn't cloned.
 collect_pending() {
     local name repo path setup
@@ -394,7 +388,7 @@ check_access() {
 
 clone_pending() {
     local dir url cloned=0 failed=0 skipped=0
-    mkdir -p "$GYLAB_REPOS"
+    mkdir -p "$GYLAB"
     while IFS=$'\t' read -r dir url <&3; do
         if printf '%s' "$FAILED_URLS" | grep -qxF "$url"; then
             skipped=$((skipped + 1))
@@ -441,7 +435,13 @@ module_status() {
         fi
         link_state "$name" "$target"
         case "$LINK" in
-            correct) status_row "$name" present "→ $(tilde "$target")" ;;
+            correct)
+                if [ -n "$setup" ] && [ ! -f "$(setup_marker "$repo")" ]; then
+                    status_row "$name" partial "linked, setup pending (no $(tilde "$(setup_marker "$repo")")); will run $setup"
+                else
+                    status_row "$name" present "→ $(tilde "$target")"
+                fi
+                ;;
             folder)  status_row "$name" partial "$(tilde "$SKILLS_DIR/$name") is a folder, not a link; left alone" ;;
             other)
                 [ "$STATE" = ready ] && next="will relink to $(tilde "$target")"
@@ -483,7 +483,7 @@ module_auto() {
     load_list || die "$LIST_ERR"
     load_projects
     log_step "Agent skills: links"
-    mkdir -p "$SKILLS_DIR" "$GYLAB_REPOS"
+    mkdir -p "$SKILLS_DIR" "$GYLAB"
     local name repo path setup
     while IFS=$'\t' read -r name repo path setup <&3; do
         if folder_in_way "$name"; then
@@ -496,7 +496,7 @@ module_auto() {
             clone) N_WAIT=$((N_WAIT + 1)); continue ;;
             blocked) log_warn "$name: $WHY, left alone"; N_LEFT=$((N_LEFT + 1)); continue ;;
         esac
-        link_and_setup "$name" "$path" "$setup"
+        link_and_setup "$name" "$path" "$setup" "$repo"
     done 3< <(list_skills)
     log_ok "Skills: $N_LINKED linked, $N_PRESENT already linked, $N_LEFT left alone, $N_WAIT waiting for a clone"
 }
@@ -542,7 +542,7 @@ module_interactive() {
         link_state "$name" "$(join_path "$CHECKOUT" "$path")"
         [ "$LINK" = correct ] && continue
         [ -n "$header" ] || { log_step "Agent skills: links"; header=1; }
-        link_and_setup "$name" "$path" "$setup"
+        link_and_setup "$name" "$path" "$setup" "$repo"
     done 3< <(list_skills)
 }
 

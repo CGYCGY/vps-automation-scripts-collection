@@ -29,7 +29,8 @@ module_help() {
     cat <<EOF
 Usage: $0 [-y] [--status] [--phase ...]
 
-Puts every skill in skills.json into ~/.claude/skills, in one of two modes:
+Puts every skill in skills.json (gitignored; copy skills.example.json) into
+~/.claude/skills, in one of two modes:
   link (default)  a link into the repo: your projects checkout when
                   projects.json lists it, else a clone in ~/.gylab/<repo>
   clone           the repo itself cloned to ~/.claude/skills/<name>
@@ -486,7 +487,9 @@ clone_pending() {
     [ "$skipped" -eq 0 ] || note "- Skills: $skipped repo(s) skipped for no access; fix it, then run $(tilde "$SKILLS_HOME")/skills.sh again"
 }
 
-enabled() { [ "${SKILLS_SETUP:-yes}" != no ]; }
+# A missing list is a skip, not a failure: skills.json is gitignored, so a
+# fresh clone has none until it is copied from skills.example.json.
+enabled() { [ "${SKILLS_SETUP:-yes}" != no ] && [ -f "$SKILLS_FILE" ]; }
 
 # status_clone NAME REPO SETUP: reads the globals resolve_clone set.
 status_clone() {
@@ -505,7 +508,7 @@ status_clone() {
 
 module_status() {
     if [ ! -f "$SKILLS_FILE" ]; then
-        status_row skills-list missing "no $(tilde "$SKILLS_FILE")"
+        status_row skills-list missing "no $(tilde "$SKILLS_FILE"); copy skills.example.json there"
         return 0
     fi
     if ! load_list; then
@@ -554,6 +557,9 @@ module_plan() {
     require_user
     if [ -n "$SKILLS_CHAINED" ]; then
         ask_yn SKILLS_SETUP "Set up the agent skills (library, gen-image, ...)?" y
+    fi
+    if [ "${SKILLS_SETUP:-yes}" != no ] && [ ! -f "$SKILLS_FILE" ]; then
+        log_warn "No skills list at $(tilde "$SKILLS_FILE"); copy skills.example.json there and run skills.sh again. Skills skipped"
     fi
     enabled || return 0
     log_step "Agent skills"

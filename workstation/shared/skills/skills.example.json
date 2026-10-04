@@ -1,0 +1,13 @@
+// Copy to skills.json (gitignored) and list your own skills.
+// Link mode (the default) links path inside the repo's checkout; clone mode
+// clones the whole repo to ~/.claude/skills/<name> and takes no path.
+{
+  "skills": [
+    { "name": "gen-image", "repo": "git@github.com:CGYCGY/gen-image.git", "path": ".claude/skills/gen-image",
+      "setup": "setup.sh -y" },
+    { "name": "deploy-via-manager", "repo": "git@github.com:CGYCGY/pi-deployment-manager.git", "path": ".claude/skills/deploy-via-manager",
+      "setup": "setup.sh -y" },
+    // A repo that is itself a catalog of skills.
+    // { "name": "library", "repo": "git@github.com:you/skill-catalog.git", "install": "clone" },
+  ]
+}

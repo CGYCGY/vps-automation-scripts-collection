@@ -18,8 +18,9 @@ end of a successful run.
 
 ## The List
 
-`skills.json` beside the script is committed. Comments and trailing commas are
-fine.
+`skills.json` beside the script is your list. It is gitignored, so each
+machine keeps its own: copy `skills.example.json` to start one. Without it the
+module says so and skips. Comments and trailing commas are fine.
 
 ```jsonc
 {
@@ -50,9 +51,8 @@ the skill.
   clone in `~/.gylab/<repo>` (see below). gen-image and deploy-via-manager work
   this way: the skill is one folder of a larger tool repo.
 - **`clone`**: the repo itself is cloned to `~/.claude/skills/<name>`. No link,
-  no `~/.gylab`, and `projects.json` is not consulted. `library`
-  (skill-catalog) works this way: the whole repo is a catalog of installable
-  skills and is meant to live there.
+  no `~/.gylab`, and `projects.json` is not consulted. Meant for a repo that
+  is a whole catalog of installable skills, like the `library` example.
 
 A clone-mode skill is cloned when `~/.claude/skills/<name>` is missing or an
 empty folder. A clone of the repo there is left as it is: never pulled,

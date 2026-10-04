@@ -159,7 +159,7 @@ that need you: the Tailscale login and the GitHub key.
 │       │   └── README.md
 │       ├── skills/
 │       │   ├── skills.sh             # Links the agent skills into ~/.claude/skills
-│       │   ├── skills.json           # The skills, their repos and setup commands
+│       │   ├── skills.example.json   # Copy to skills.json (gitignored)
 │       │   └── README.md
 │       └── ai-dev/
 │           ├── ai-dev-setup.sh       # Linux AI development toolchain setup

@@ -14,7 +14,7 @@ MAC="$SCRIPT_DIR/macos"
 # applies to are installed, and ssh after tailscale, because Remote Login only
 # goes off once Tailscale SSH is connected.
 MACOS_MODULES="$MAC/homebrew.sh $MAC/apps.sh $MAC/tailscale.sh $MAC/full-disk-access.sh
-$MAC/ai-dev.sh $MAC/power.sh $MAC/finder.sh $MAC/ssh.sh"
+$MAC/ai-dev.sh $MAC/power.sh $MAC/finder.sh $MAC/zed.sh $MAC/ssh.sh"
 
 show_help() {
     cat <<EOF

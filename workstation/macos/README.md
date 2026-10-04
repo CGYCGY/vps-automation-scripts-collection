@@ -21,7 +21,7 @@ macOS ships, so nothing has to be installed first.
 3. **Dependencies:** Homebrew, apps, Tailscale. Then Full Disk Access is
    checked, once the apps it applies to exist.
 4. **No input needed:** Tailscale as a system service, the AI dev toolchain,
-   power, Finder, git settings.
+   power, Finder, Zed settings, git settings.
 5. **Needs you:** the Tailscale login, then creating the GitHub key and adding
    it to your account. Remote Login is turned off last.
 
@@ -36,6 +36,7 @@ macOS ships, so nothing has to be installed first.
 | `ai-dev.sh` | Runs [the AI dev toolchain setup](../shared/ai-dev/macos/README.md) unattended |
 | `power.sh` | On power: no sleep, and restart after a power cut. Defaults to no on a laptop |
 | `finder.sh` | Finder shows hidden files |
+| `zed.sh` | Merges `zed-settings.json` into Zed's settings when Zed is installed: panel docks, Ayu themes, telemetry off. Only values that differ from Zed's defaults are tracked. The rewrite drops the file's comments, so the original is kept as a `.backup.*` copy |
 | `ssh.sh` | Git identity, GitHub https URLs through SSH, a GitHub key in the Keychain, and Remote Login off |
 
 Each module also runs alone, e.g. `./workstation/macos/power.sh --status`.

@@ -59,6 +59,12 @@ agent-browser also downloads Chrome for Testing into `~/.agent-browser` and
 installs the system libraries headless Chrome needs, so the agents can drive a
 browser on a server with no desktop.
 
+On Linux ARM64 (`aarch64`) agent-browser is skipped, with a note in the summary
+and `skipped` in `--status`: Chrome for Testing has no Linux ARM64 build. Bring
+your own browser there if you need one (see
+[vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser)). An
+agent-browser already installed with its browser is reported present.
+
 It also installs the Claude Code status line from `claude/statusline-command.sh`
 to `~/.claude/statusline-command.sh` (model, effort, context use, token counts
 and cost) and points `statusLine` in `~/.claude/settings.json` at it. The rest of
@@ -74,7 +80,7 @@ Model, effort and pi's provider are deliberately left out, because they change t
 
 Before agent-browser installs, `agent-browser` is added to npm's
 `allow-scripts` list in `~/.npmrc`. npm 11 skips the install scripts of global
-packages that aren't on that list.
+packages that aren't on that list. Where agent-browser is skipped, so is this.
 
 The source files live under `agent-instructions/`. Existing destination files are backed up with a timestamp before they are replaced, and reruns skip files that already match.
 

@@ -24,6 +24,10 @@ module_deps() {
 
 module_summary() {
     note "- Log the agents in: claude, codex login, agy, pi, prime-agent. Then: exec bash -l"
+    # ai-dev-setup.sh owns the arm64 decision; its survey row is the one answer.
+    if bash "$AI_DEV" --status | grep -qE '^  agent-browser +skipped '; then
+        note "- agent-browser skipped: Chrome for Testing has no Linux ARM64 build. Install a browser yourself if you need it (see https://github.com/vercel-labs/agent-browser)"
+    fi
 }
 
 module_main "$@"

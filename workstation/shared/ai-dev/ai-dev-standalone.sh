@@ -143,9 +143,29 @@ load_nvm() {
 
 tool_version() { timeout 10 "$1" --version 2>/dev/null | head -1 | tr -d '\r'; }
 
+# Chrome for Testing publishes no Linux ARM64 build, so `agent-browser install`
+# has nothing to download there and would stop the whole run. The step, and the
+# npm allow-scripts entry that exists only for it, are skipped instead, unless
+# agent-browser is already fully installed.
+AB_SKIP_REASON="Chrome for Testing has no Linux ARM64 build"
+AB_SKIP_NOTE="agent-browser skipped: ${AB_SKIP_REASON}. Install a browser yourself if you need it (see https://github.com/vercel-labs/agent-browser)"
+
+no_browser_build() {
+    [ "$(uname -s)" = Linux ] || return 1
+    case "$(uname -m)" in aarch64|arm64) return 0 ;; esac
+    return 1
+}
+
+agent_browser_installed() {
+    have agent-browser && compgen -G "$HOME/.agent-browser/browsers/*" >/dev/null
+}
+
+skip_agent_browser() { no_browser_build && ! agent_browser_installed; }
+
 #############################################
 # DETECTION
-#   Each detect_* sets DETAIL and returns 0 when the component is already set up.
+#   Each detect_* sets DETAIL and returns 0 when the component is already set up,
+#   2 when it is skipped on this machine, 1 when it needs installing.
 #   No network, no side effects — safe to run on any machine at any time.
 #############################################
 
@@ -253,14 +273,17 @@ detect_agy()         { detect_tool agy; }
 detect_agent_browser() {
     if ! have agent-browser; then
         DETAIL="not on PATH"
-        return 1
-    fi
-    DETAIL="$(tool_version agent-browser)"
-    [ -n "$DETAIL" ] || DETAIL="installed"
-    if ! compgen -G "$HOME/.agent-browser/browsers/*" >/dev/null; then
+    else
+        DETAIL="$(tool_version agent-browser)"
+        [ -n "$DETAIL" ] || DETAIL="installed"
+        compgen -G "$HOME/.agent-browser/browsers/*" >/dev/null && return 0
         DETAIL="${DETAIL}, no browser binaries"
-        return 1
     fi
+    if skip_agent_browser; then
+        DETAIL="$AB_SKIP_REASON"
+        return 2
+    fi
+    return 1
 }
 
 detect_agent_instructions() {
@@ -304,12 +327,16 @@ detect_npm_allow_scripts() {
     load_nvm
     if ! have npm; then
         DETAIL="will allow agent-browser's install script"
-        return 1
+    else
+        case ",$(npm config get allow-scripts 2>/dev/null | tr -d ' ')," in
+            *,agent-browser,*) DETAIL="agent-browser allowed"; return 0 ;;
+        esac
+        DETAIL="will add agent-browser to npm allow-scripts"
     fi
-    case ",$(npm config get allow-scripts 2>/dev/null | tr -d ' ')," in
-        *,agent-browser,*) DETAIL="agent-browser allowed"; return 0 ;;
-    esac
-    DETAIL="will add agent-browser to npm allow-scripts"
+    if skip_agent_browser; then
+        DETAIL="only for agent-browser; $AB_SKIP_REASON"
+        return 2
+    fi
     return 1
 }
 
@@ -618,25 +645,39 @@ install_aliases() {
 #############################################
 
 PLAN=()
+SKIPPED=()
+
+is_skipped() { case " ${SKIPPED[*]:-} " in *" $1 "*) return 0 ;; esac; return 1; }
 
 survey() {
     PLAN=()
+    SKIPPED=()
     echo
     echo "${C_BOLD}Survey${C_RESET}"
     printf '  %-18s %-9s %s\n' "COMPONENT" "STATUS" "DETAIL"
-    local s fn
+    local s fn rc
     for s in "${STEPS[@]}"; do
         fn="detect_${s//-/_}"
         DETAIL=""
+        rc=0
         if [ "$OPT_FORCE" -eq 1 ]; then
-            PLAN+=("$s")
-            printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "forced" "$C_RESET" "reinstall requested"
-        elif "$fn"; then
-            printf '  %-18s %b%-9s%b %s%s%s\n' "$s" "$C_GREEN" "present" "$C_RESET" "$C_DIM" "$DETAIL" "$C_RESET"
+            # A reinstall would hit the same missing download.
+            case "$s" in
+                agent-browser|npm-allow-scripts) no_browser_build && { rc=2; DETAIL="$AB_SKIP_REASON"; } ;;
+            esac
+            [ "$rc" -eq 2 ] || rc=3
         else
-            PLAN+=("$s")
-            printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "install" "$C_RESET" "$DETAIL"
+            "$fn" || rc=$?
         fi
+        case "$rc" in
+            0)  printf '  %-18s %b%-9s%b %s%s%s\n' "$s" "$C_GREEN" "present" "$C_RESET" "$C_DIM" "$DETAIL" "$C_RESET" ;;
+            2)  SKIPPED+=("$s")
+                printf '  %-18s %b%-9s%b %s\n' "$s" "$C_DIM" "skipped" "$C_RESET" "$DETAIL" ;;
+            3)  PLAN+=("$s")
+                printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "forced" "$C_RESET" "reinstall requested" ;;
+            *)  PLAN+=("$s")
+                printf '  %-18s %b%-9s%b %s\n' "$s" "$C_YELLOW" "install" "$C_RESET" "$DETAIL" ;;
+        esac
     done
     echo
 }
@@ -698,7 +739,9 @@ report() {
     echo "${C_BOLD}Installed:${C_RESET}"
     local t v
     for t in claude codex pi prime-agent herdr agy agent-browser; do
-        if have "$t"; then
+        if is_skipped "$t"; then
+            printf '  %b %-14s %s\n' "${C_DIM}-${C_RESET}" "$t" "skipped: $AB_SKIP_REASON"
+        elif have "$t"; then
             v="$(tool_version "$t")"
             printf '  %b %-14s %s\n' "${C_GREEN}✓${C_RESET}" "$t" "${v:-ok}"
         else
@@ -733,6 +776,12 @@ ${C_BOLD}Config worth copying from the old device:${C_RESET}
 
 ${C_BOLD}Project navigator:${C_RESET} installed from https://github.com/CGYCGY/shell-utils
 EOF
+}
+
+skip_notes() {
+    is_skipped agent-browser || return 0
+    echo
+    log_warn "$AB_SKIP_NOTE"
 }
 
 # Not in the standalone bundle: skills.sh needs the rest of the repository.
@@ -801,6 +850,7 @@ fi
 if [ ${#PLAN[@]} -eq 0 ] && [ "$OPT_UPGRADE" -eq 0 ]; then
     log_ok "everything is already set up — nothing to do"
     rm -f "$STATE_FILE"
+    skip_notes
     offer_skills
     exit 0
 fi
@@ -823,6 +873,7 @@ rm -f "$STATE_FILE"
 report
 echo
 log_ok "done — log at ${LOG_FILE}"
+skip_notes
 offer_skills
 AI_DEV_PAYLOAD_EOF
 

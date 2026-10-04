@@ -1,0 +1,23 @@
+// Copy to projects.json (gitignored), or let projects.sh ask where yours is.
+// A url makes a repo, repos makes a set (cloned as a whole, one cdp name for
+// the folder), neither makes a plain folder. Paths are relative to root.
+{
+  "root": "~/projects",
+  "projects": [
+    { "name": "projects", "path": "." },
+    { "name": "temp", "path": "lab/temp" },
+    { "name": "vps", "path": "tools/vps-automation-scripts-collection",
+      "url": "git@github.com:CGYCGY/vps-automation-scripts-collection.git" },
+    { "name": "shell", "path": "tools/shell-utils",
+      "url": "git@github.com:CGYCGY/shell-utils.git" },
+    { "name": "pi", "path": "tools/pi", "repos": [
+        { "path": "pi-deployment-manager", "url": "git@github.com:CGYCGY/pi-deployment-manager.git" }
+    ]},
+    { "name": "image", "path": "tools/gen-image", "repos": [
+        { "path": "gen-image", "url": "git@github.com:CGYCGY/gen-image.git" },
+        { "path": "gen-image-gateway", "url": "git@github.com:CGYCGY/gen-image-gateway.git" }
+    ]},
+    // Commented out: kept in the list, but not cloned on this machine.
+    // { "name": "notes", "path": "lab/notes" },
+  ]
+}

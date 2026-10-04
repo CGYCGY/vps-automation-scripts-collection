@@ -67,6 +67,7 @@ and every flag is passed through to it.
 | Shared (Linux) | **Tailscale SSH** | Secure the machine with Tailscale SSH - no more SSH keys | [shared/linux/tailscale/README.md](shared/linux/tailscale/README.md) |
 | Shared (Linux) | **Swap Config** | RAM-based optimized swap settings | [shared/linux/swap/README.md](shared/linux/swap/README.md) |
 | Workstation | **Mac Setup** | Homebrew apps, Tailscale SSH, power, Finder, Zed settings, git and GitHub key, plus the AI dev toolchain | [workstation/macos/README.md](workstation/macos/README.md) |
+| Workstation | **Projects** | Clone your repos into the same folder layout on every machine and register each with `cdp`; optional, from a JSONC list | [workstation/shared/projects/README.md](workstation/shared/projects/README.md) |
 | Workstation | **AI Dev Setup** | Bootstrap the author's AI coding-agent toolchain (single-file installer available; [macOS version](workstation/shared/ai-dev/macos/README.md)) | [workstation/shared/ai-dev/README.md](workstation/shared/ai-dev/README.md) |
 
 ## Supported Systems
@@ -140,6 +141,10 @@ that need you: the Tailscale login and the GitHub key.
 │   │   ├── macos-lib.sh        # macOS helpers on top of setup-lib.sh
 │   │   └── README.md
 │   └── shared/                 # Used by both Linux and macOS workstations
+│       ├── projects/
+│       │   ├── projects.sh           # Clones your projects list, registers cdp names
+│       │   ├── projects.example.json # Copy to projects.json (gitignored)
+│       │   └── README.md
 │       └── ai-dev/
 │           ├── ai-dev-setup.sh       # Linux AI development toolchain setup
 │           ├── ai-dev-standalone.sh  # Generated single-file installer
@@ -152,7 +157,8 @@ that need you: the Tailscale login and the GitHub key.
 │   └── tailscale-tailnet.md    # Tailnet tags and SSH policy
 └── shared/
     ├── lib/
-    │   └── setup-lib.sh        # Phase runner every setup script uses
+    │   ├── setup-lib.sh        # Phase runner every setup script uses
+    │   └── project-navigator-lib.sh # cdp install shared by ai-dev and projects
     └── linux/                  # Used by both servers and Linux workstations
         ├── swap/
         │   ├── swap-setup.sh           # RAM-based swap file and tuning

@@ -10,11 +10,14 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../shared/lib/setup-lib.sh"
 
 MAC="$SCRIPT_DIR/macos"
+SHARED="$SCRIPT_DIR/shared"
 # Order matters within each phase: Full Disk Access comes after the apps it
-# applies to are installed, and ssh after tailscale, because Remote Login only
-# goes off once Tailscale SSH is connected.
+# applies to are installed, ssh after tailscale, because Remote Login only
+# goes off once Tailscale SSH is connected, and projects after ssh, because
+# cloning needs the GitHub key on the account.
 MACOS_MODULES="$MAC/homebrew.sh $MAC/apps.sh $MAC/tailscale.sh $MAC/full-disk-access.sh
-$MAC/ai-dev.sh $MAC/power.sh $MAC/finder.sh $MAC/zed.sh $MAC/ssh.sh"
+$MAC/ai-dev.sh $MAC/power.sh $MAC/finder.sh $MAC/zed.sh $MAC/ssh.sh
+$SHARED/projects/projects.sh"
 
 show_help() {
     cat <<EOF
@@ -24,7 +27,8 @@ Usage: $0 [--status] [-y]
   -y, --yes   Take the default answer for every question
 
 macOS: asks for sudo once, asks every question, installs, then leaves the
-steps that need you (Tailscale login, GitHub key) for the end.
+steps that need you (Tailscale login, GitHub key, cloning your projects) for
+the end.
 Linux: runs the AI dev toolchain setup; its flags are passed through.
 EOF
 }

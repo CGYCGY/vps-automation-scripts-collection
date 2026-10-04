@@ -17,13 +17,14 @@ macOS ships, so nothing has to be installed first.
 1. **sudo:** asked once. It stays valid for the whole run, so no step stops
    halfway to ask again.
 2. **Questions:** desktop apps or not, always on or not, git identity, GitHub
-   key. Then one "Start the setup?".
+   key, your projects. Then one "Start the setup?".
 3. **Dependencies:** Homebrew, apps, Tailscale. Then Full Disk Access is
    checked, once the apps it applies to exist.
 4. **No input needed:** Tailscale as a system service, the AI dev toolchain,
-   power, Finder, Zed settings, git settings.
+   power, Finder, Zed settings, git settings, project folders and `cdp` names.
 5. **Needs you:** the Tailscale login, then creating the GitHub key and adding
-   it to your account. Remote Login is turned off last.
+   it to your account, then Remote Login off. Your projects are cloned last,
+   once the key is on the account.
 
 ## Modules
 
@@ -38,8 +39,10 @@ macOS ships, so nothing has to be installed first.
 | `finder.sh` | Finder shows hidden files |
 | `zed.sh` | Merges `zed-settings.json` into Zed's settings when Zed is installed: panel docks, Ayu themes, telemetry off. Only values that differ from Zed's defaults are tracked. The rewrite drops the file's comments, so the original is kept as a `.backup.*` copy |
 | `ssh.sh` | Git identity, GitHub https URLs through SSH, a GitHub key in the Keychain, and Remote Login off |
+| [`projects.sh`](../shared/projects/README.md) | Optional, one question. Clones the repos in your projects list and registers each name with `cdp` |
 
-Each module also runs alone, e.g. `./workstation/macos/power.sh --status`.
+Each module also runs alone, e.g. `./workstation/macos/power.sh --status` or
+`./workstation/shared/projects/projects.sh`.
 
 ## Remote Access
 
@@ -68,3 +71,6 @@ and run the setup again for the steps that need it.
 | `MAC_ALWAYS_ON` | `yes` / `no`: no sleep on power, restart after a power cut |
 | `GIT_NAME`, `GIT_EMAIL` | git identity |
 | `GH_SSH_KEY` | `yes` / `no`: create a GitHub key when none exists |
+| `PROJECTS_SETUP` | `yes` / `no`: clone your projects |
+| `PROJECTS_SOURCE` | URL, file path or JSON of your projects list, when there is none yet |
+| `PROJECTS_ROOT` | where your projects live, when the list has no root |

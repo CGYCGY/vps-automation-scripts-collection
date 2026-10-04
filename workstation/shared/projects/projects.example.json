@@ -1,6 +1,7 @@
 // Copy to projects.json (gitignored), or let projects.sh ask where yours is.
-// A url makes a repo, repos makes a set (cloned as a whole, one cdp name for
-// the folder), neither makes a plain folder. Paths are relative to root.
+// A url makes a repo, repos makes a set (cloned as a whole), neither makes a
+// plain folder. Paths are relative to root. Each entry's name is its cdp
+// shortcut unless "cdp" says otherwise; set members get one only from "cdp".
 {
   "root": "~/projects",
   "projects": [
@@ -8,10 +9,12 @@
     { "name": "temp", "path": "lab/temp" },
     { "name": "vps", "path": "tools/vps-automation-scripts-collection",
       "url": "git@github.com:CGYCGY/vps-automation-scripts-collection.git" },
-    { "name": "shell", "path": "tools/shell-utils",
+    // Cloned, but no cdp shortcut.
+    { "name": "shell", "path": "tools/shell-utils", "cdp": false,
       "url": "git@github.com:CGYCGY/shell-utils.git" },
     { "name": "pi", "path": "tools/pi", "repos": [
-        { "path": "pi-deployment-manager", "url": "git@github.com:CGYCGY/pi-deployment-manager.git" }
+        // cdp pdm jumps into this member's folder.
+        { "path": "pi-deployment-manager", "url": "git@github.com:CGYCGY/pi-deployment-manager.git", "cdp": "pdm" }
     ]},
     { "name": "image", "path": "tools/gen-image", "repos": [
         { "path": "gen-image", "url": "git@github.com:CGYCGY/gen-image.git" },

@@ -2,7 +2,8 @@
 
 Puts your projects in the same place on every machine. It clones the repos in
 your projects list, creates the plain folders, and registers each name with
-`cdp`, so `cdp vps` jumps to that project.
+`cdp`, so `cdp vps` jumps to that project. An entry can [pick another shortcut
+or none](#the-list).
 
 ```bash
 ./workstation/shared/projects/projects.sh            # run it alone
@@ -47,12 +48,30 @@ The keys decide the kind:
 | Repo | `name`, `path`, `url` | Cloned to `path` |
 | Set | `name`, `path`, `repos` | Each member is cloned into `path`. Members have a `path` (inside the set) and a `url`, no name |
 
-`name` is the `cdp` name; every kind gets one. Paths are relative to `root`, with
-no leading `/` and no `..`. `root` is per machine; `~` in it is kept as written
-and expanded when the list is read. The list is checked every time it is read:
-names unique, every entry with a name and a path, repos with a url, set members
-with a path and a url, nothing with both `url` and `repos`. A problem names the
-entry.
+Paths are relative to `root`, with no leading `/` and no `..`. `root` is per
+machine; `~` in it is kept as written and expanded when the list is read.
+
+An optional `cdp` key sets the shortcut:
+
+| Where | `cdp` | Shortcut |
+|-------|-------|----------|
+| Entry (any kind) | absent | `name` |
+| Entry (any kind) | `"sh"` | `sh` instead of `name`, same folder |
+| Entry (any kind) | `false` | none; still cloned or created |
+| Set member | `"pdm"` | `pdm`, to the member's folder |
+| Set member | absent or `false` | none |
+
+```jsonc
+{ "name": "pi", "path": "tools/pi", "cdp": false, "repos": [
+    { "path": "pi-deployment-manager", "url": "git@github.com:CGYCGY/pi-deployment-manager.git", "cdp": "pdm" }
+]}
+```
+
+The list is checked every time it is read: names unique, every entry with a
+name and a path, repos with a url, set members with a path and a url, nothing
+with both `url` and `repos`, `cdp` either `false` or a name (letters, digits,
+`.` `_` `-`; `true` is an error), and every shortcut unique across entries and
+set members. A problem names the entry.
 
 ## Getting the List onto a Machine
 
@@ -112,8 +131,8 @@ A failed clone is logged and the rest carry on. The end shows the counts.
 
 The navigator comes from [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils)
 (`~/.zsh/project-navigator.zsh` on macOS, `~/.project-navigator.sh` on Linux).
-It is installed if missing, the same way the AI dev setup does it. All names are
-written in one pass: a name with a new path is updated, names that aren't in the
+It is installed if missing, the same way the AI dev setup does it. All shortcuts
+are written in one pass: a name with a new path is updated, names that aren't in the
 list stay, and the previous file is kept as `.bak`. Open a new shell to use them.
 
 ## Status
@@ -124,7 +143,7 @@ list stay, and the previous file is kept as `.bak`. Open a new shell to use them
 |-----|-------|
 | `projects-list` | Where the list is and its root, or that it is missing |
 | `projects-repos` | How many repos are cloned |
-| `projects-cdp` | How many names are registered with the right path |
+| `projects-cdp` | How many of the list's shortcuts are registered with the right path |
 
 ## Answers Up Front
 

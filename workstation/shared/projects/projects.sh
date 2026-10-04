@@ -1,7 +1,7 @@
 #!/bin/bash
 # Clones the repos in projects.json into the same folder layout on every
-# machine and registers each project's name with cdp. Never pulls, resets or
-# deletes anything in a folder that is already there.
+# machine and registers cdp shortcuts for them. Never pulls, resets or deletes
+# anything in a folder that is already there.
 
 set -e
 
@@ -30,8 +30,8 @@ Usage: $0 [-y] [--status] [--phase ...]
        $0 check
 
 Clones the repos listed in projects.json, creates the plain folders, and
-registers every project name with cdp. Never pulls, resets or deletes inside a
-folder that is already there.
+registers their cdp shortcuts. Never pulls, resets or deletes inside a folder
+that is already there.
 
   scan [ROOT]  Print a projects.json for the folders under ROOT (default: the
                list's root, else ~/projects). Read-only.
@@ -77,10 +77,16 @@ join_path() {
 VALIDATE='
 def badpath: test("^[/~]") or ([split("/")[] | select(. == "..")] | length > 0);
 def badchars: test("[\"$`\\\\\t\n]");
+def shortname: test("^[A-Za-z0-9._-]+$");
+def cdp_problem:
+    if has("cdp") and .cdp != false and (.cdp | type) != "string" then "cdp must be false or a shortcut name"
+    elif (.cdp | type) == "string" and (.cdp | shortname | not) then "the cdp name may only use letters, digits, . _ and -"
+    else null end;
 def entry_checks($w):
     if type != "object" then "\($w): not an object"
     elif (.name | type) != "string" or .name == "" then "\($w): no name"
-    elif (.name | test("^[A-Za-z0-9._-]+$") | not) then "\($w): the name may only use letters, digits, . _ and -"
+    elif (.name | shortname | not) then "\($w): the name may only use letters, digits, . _ and -"
+    elif cdp_problem then "\($w): \(cdp_problem)"
     elif (.path | type) != "string" or .path == "" then "\($w): no path"
     elif (.path | badpath) then "\($w): the path must be relative to root, without .."
     elif (.path | badchars) then "\($w): the path has a quote, $, backtick, backslash or control character"
@@ -95,6 +101,7 @@ def entry_checks($w):
                 elif ($m.path | badpath) then "\($mw): the path must be relative to the set folder, without .."
                 elif ($m.path | badchars) then "\($mw): the path has a quote, $, backtick, backslash or control character"
                 elif ($m.url | type) != "string" or $m.url == "" then "\($mw): no url"
+                elif ($m | cdp_problem) then "\($mw): \($m | cdp_problem)"
                 else empty end)
         end
     else empty end;
@@ -108,7 +115,9 @@ def entry_checks($w):
         (.projects | to_entries[] | .key as $i | .value as $e |
             ("project \($i + 1)" + (if ($e | type) == "object" and ($e.name | type) == "string" then " (\($e.name))" else "" end)) as $w |
             $e | entry_checks($w)),
-        ([.projects[] | objects | .name | strings] | group_by(.) | map(select(length > 1) | .[0])[] | "the name \"\(.)\" is used twice")
+        ([.projects[] | objects | .name | strings] | group_by(.) | map(select(length > 1) | .[0])[] | "the name \"\(.)\" is used twice"),
+        ([.projects[] | objects | (if has("cdp") then .cdp else .name end | strings), (.repos | arrays | .[] | objects | .cdp | strings)]
+            | group_by(.) | map(select(length > 1) | .[0])[] | "the cdp name \"\(.)\" is used twice")
     end
 ] | .[0] // empty
 '
@@ -134,9 +143,20 @@ load_list() {
 
 q() { printf '%s' "$LIST_JSON" | jq -r "$@"; }
 
-# name <TAB> kind <TAB> path [<TAB> url]
+# name <TAB> kind <TAB> path <TAB> shortcut [<TAB> url]. shortcut is the name,
+# a cdp string, or "-" for none: never empty, because read collapses empty
+# tab-separated fields and the url after it would shift left.
 list_entries() {
-    q '.projects[] | [.name, (if has("url") then "repo" elif has("repos") then "set" else "folder" end), .path, (.url // "")] | @tsv'
+    q '.projects[] | [.name, (if has("url") then "repo" elif has("repos") then "set" else "folder" end), .path,
+        (if has("cdp") then (.cdp | if . == false then "-" else . end) else .name end), (.url // "")] | @tsv'
+}
+
+# shortcut <TAB> path from root, for every shortcut the list registers. Set
+# members have no name, so only a cdp string gives them one.
+list_shortcuts() {
+    q '.projects[] | . as $e |
+        (if has("cdp") then .cdp else .name end | strings | [., $e.path]),
+        ((.repos // [])[] | select(.cdp | type == "string") | [.cdp, "\($e.path)/\(.path)"]) | @tsv'
 }
 
 # label <TAB> path from root <TAB> url, one line per clone
@@ -155,16 +175,21 @@ list_folders() {
 }
 
 show_list() {
-    local name kind path url label rel
+    local name kind path cdp url label marked=""
     echo "Projects in $(tilde "$PROJECTS_FILE") (root ${LIST_ROOT_RAW:-not set}):"
-    while IFS=$'\t' read -r name kind path url <&3; do
-        printf '  %-14s %-7s %-40s %s\n' "$name" "$kind" "$path" "$url"
+    while IFS=$'\t' read -r name kind path cdp url <&3; do
+        label="$name"
+        [ "$cdp" = "$name" ] || { label="$name ($cdp)"; marked=1; }
+        printf '  %-14s %-7s %-40s %s\n' "$label" "$kind" "$path" "$url"
         if [ "$kind" = set ]; then
-            while IFS=$'\t' read -r path url <&4; do
-                printf '      %-50s %s\n' "$path" "$url"
-            done 4< <(q --arg n "$name" '.projects[] | select(.name == $n) | .repos[] | [.path, .url] | @tsv')
+            while IFS=$'\t' read -r cdp path url <&4; do
+                label="$path"
+                [ "$cdp" = - ] || { label="$path ($cdp)"; marked=1; }
+                printf '      %-50s %s\n' "$label" "$url"
+            done 4< <(q --arg n "$name" '.projects[] | select(.name == $n) | .repos[] | [(.cdp // "-"), .path, .url] | @tsv')
         fi
     done 3< <(list_entries)
+    [ -z "$marked" ] || echo "  (x): the cdp shortcut is x, not the name; (-): no shortcut"
 }
 
 # Answer is a URL, a file path or the JSON itself. A paste arrives one line per
@@ -362,7 +387,7 @@ module_status() {
     fi
     status_row projects-list present "$(tilde "$PROJECTS_FILE"), root $LIST_ROOT_RAW"
 
-    local label rel url name kind path n=0 m=0 state registered
+    local label rel url name path n=0 m=0 state registered
     while IFS=$'\t' read -r label rel url <&3; do
         m=$((m + 1))
         clone_of "$(join_path "$LIST_ROOT" "$rel")" "$url" && n=$((n + 1))
@@ -376,10 +401,10 @@ module_status() {
     fi
     registered="$(pn_entries)"
     n=0; m=0
-    while IFS=$'\t' read -r name kind path url <&3; do
+    while IFS=$'\t' read -r name path <&3; do
         m=$((m + 1))
         printf '%s\n' "$registered" | grep -qxF "$name"$'\t'"$(join_path "$LIST_ROOT" "$path")" && n=$((n + 1))
-    done 3< <(list_entries)
+    done 3< <(list_shortcuts)
     if [ "$n" -eq "$m" ]; then state=present; elif [ "$n" -eq 0 ]; then state=missing; else state=partial; fi
     status_row projects-cdp "$state" "$n of $m names registered"
 }
@@ -423,7 +448,7 @@ module_deps() {
 module_auto() {
     ready || return 0
     log_step "Projects: folders and cdp"
-    local rel dir made=0 name kind path url
+    local rel dir made=0 name path
     [ -d "$LIST_ROOT" ] || { mkdir -p "$LIST_ROOT"; made=1; }
     while IFS= read -r rel <&3; do
         dir="$(join_path "$LIST_ROOT" "$rel")"
@@ -435,9 +460,9 @@ module_auto() {
         pn_install || { log_warn "cdp could not be installed; names not registered"; return 0; }
     fi
     set --
-    while IFS=$'\t' read -r name kind path url <&3; do
+    while IFS=$'\t' read -r name path <&3; do
         set -- "$@" "$name" "$(join_path "$LIST_ROOT" "$path")"
-    done 3< <(list_entries)
+    done 3< <(list_shortcuts)
     pn_register "$@"
 }
 

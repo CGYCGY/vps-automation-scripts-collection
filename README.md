@@ -52,9 +52,11 @@ checks; run it with sudo for the firewall, sshd and Docker ones.
 ./workstation/setup.sh -y           # Take the default for every question
 ```
 
-On a Mac this runs the [macOS workstation setup](workstation/macos/README.md).
-On Linux it runs the [AI dev setup](workstation/shared/ai-dev/README.md#options),
-and every flag is passed through to it.
+On a Mac this runs the [macOS workstation setup](workstation/macos/README.md),
+on Linux the [Linux workstation setup](workstation/linux/README.md). Both ask
+every question first, then install, and leave the GitHub key and the clones for
+the end. On Linux, `--upgrade` and `--force` are passed on to the
+[AI dev setup](workstation/shared/ai-dev/README.md#options).
 
 ## Available Scripts
 
@@ -66,6 +68,7 @@ and every flag is passed through to it.
 | Server | **PostgreSQL Manager** | Manage databases, users, and permissions | [server/postgres/README.md](server/postgres/README.md) |
 | Shared (Linux) | **Tailscale SSH** | Secure the machine with Tailscale SSH - no more SSH keys | [shared/linux/tailscale/README.md](shared/linux/tailscale/README.md) |
 | Shared (Linux) | **Swap Config** | RAM-based optimized swap settings | [shared/linux/swap/README.md](shared/linux/swap/README.md) |
+| Workstation | **Linux Setup** | Git and GitHub key, the AI dev toolchain, your projects and the agent skills | [workstation/linux/README.md](workstation/linux/README.md) |
 | Workstation | **Mac Setup** | Homebrew apps, Tailscale SSH, power, Finder, Zed settings, git and GitHub key, plus the AI dev toolchain | [workstation/macos/README.md](workstation/macos/README.md) |
 | Workstation | **Projects** | Clone your repos into the same folder layout on every machine and register each with `cdp`; optional, from a JSONC list | [workstation/shared/projects/README.md](workstation/shared/projects/README.md) |
 | Workstation | **Agent Skills** | Put the agent skills in `~/.claude/skills`: links from your projects checkout or a clone in `~/.gylab/<repo>`, and the library catalog cloned in place; optional | [workstation/shared/skills/README.md](workstation/shared/skills/README.md) |
@@ -109,7 +112,10 @@ Interactive tool for managing PostgreSQL databases, users, and permissions.
 sudo MACHINE_ROLE=workstation ./shared/linux/tailscale/tailscale-setup.sh
 ./workstation/setup.sh
 ```
-Secures remote access with Tailscale, then installs the AI development toolchain for the normal user.
+Secures remote access with Tailscale (as root), then, as the normal user, asks
+every question and sets up git and a GitHub key, the AI development toolchain,
+your projects and the agent skills. It asks for sudo only to install missing apt
+packages.
 
 ### Mac Workstation
 ```bash
@@ -141,7 +147,12 @@ that need you: the Tailscale login and the GitHub key.
 │   ├── macos/                  # Mac modules: homebrew, apps, tailscale, power, ssh, ...
 │   │   ├── macos-lib.sh        # macOS helpers on top of setup-lib.sh
 │   │   └── README.md
+│   ├── linux/                  # Linux modules: ssh, ai-dev
+│   │   ├── linux-lib.sh        # Linux helpers on top of setup-lib.sh
+│   │   └── README.md
 │   └── shared/                 # Used by both Linux and macOS workstations
+│       ├── ssh/
+│       │   └── ssh-lib.sh            # Git identity and GitHub key steps of both ssh.sh
 │       ├── projects/
 │       │   ├── projects.sh           # Clones your projects list, registers cdp names
 │       │   ├── projects.example.json # Copy to projects.json (gitignored)

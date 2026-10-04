@@ -41,6 +41,9 @@ cd vps-automation-scripts-collection
 ./workstation/setup.sh
 ```
 
+That runs this setup as one module of the
+[Linux workstation setup](../../linux/README.md), after its questions and
+alongside git and the GitHub key, your projects and the agent skills.
 `workstation/shared/ai-dev/ai-dev-setup.sh` can be run directly too. It is tracked as executable,
 so a clone needs no `chmod` — unlike a raw download, which carries no file mode.
 
@@ -126,7 +129,8 @@ curl -fsSL https://raw.githubusercontent.com/CGYCGY/shell-utils/master/bash/prof
 After a successful run, the script asks "Set up the agent skills too?" and, on
 yes, runs [`../skills/skills.sh`](../skills/README.md); with `-y` it says yes
 and passes `-y` on. The standalone file has no `skills.sh`, so it prints where
-the skills come from instead.
+the skills come from instead. The workstation setups run it with `--no-skills`,
+since the skills are their own module there.
 
 ## Environment Overrides
 

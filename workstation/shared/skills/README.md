@@ -10,11 +10,11 @@ that owns it or as a clone of that repo (see [Install Modes](#install-modes)).
 ./workstation/shared/skills/skills.sh -y         # take the defaults
 ```
 
-It also runs last in the [Mac setup](../../macos/README.md), after
-[projects](../projects/README.md). There it is optional: one question, "Set up
-the agent skills?". Run alone, it doesn't ask. The
-[AI dev setup](../ai-dev/README.md#options) offers it at the end of a
-successful run.
+It also runs last in the [Mac setup](../../macos/README.md) and the
+[Linux setup](../../linux/README.md), after [projects](../projects/README.md).
+There it is optional: one question, "Set up the agent skills?". Run alone, it
+doesn't ask. The [AI dev setup](../ai-dev/README.md#options) offers it at the
+end of a successful run.
 
 ## The List
 
@@ -139,6 +139,6 @@ A `skills-list` row shows instead when the list is missing or unreadable.
 
 | Variable | Values |
 |----------|--------|
-| `SKILLS_SETUP` | `yes` / `no`: set up the skills. Asked only by the Mac setup |
+| `SKILLS_SETUP` | `yes` / `no`: set up the skills. Asked only by `workstation/setup.sh` |
 | `SKILLS_FILE` | the list's location (default: `skills.json` beside the script) |
 | `PROJECTS_FILE` | the projects list searched for checkouts (default: `../projects/projects.json`) |

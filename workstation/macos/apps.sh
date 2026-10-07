@@ -5,7 +5,7 @@
 set -e
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/macos-lib.sh"
 
-FORMULAE="btop just"
+FORMULAE="btop just qrencode"
 # cask:App name, so an app installed by hand (drag to /Applications) counts as
 # present; brew would otherwise refuse to install over it.
 CASKS="orbstack:OrbStack"

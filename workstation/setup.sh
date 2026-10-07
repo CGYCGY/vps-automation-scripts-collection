@@ -22,7 +22,7 @@ $MAC/ai-dev.sh $MAC/power.sh $MAC/finder.sh $MAC/zed.sh $MAC/ssh.sh
 $SHARED/projects/projects.sh $SHARED/skills/skills.sh"
 # Same reasons, and ai-dev before projects and skills: its deps phase installs
 # the jq theirs need.
-LINUX_MODULES="$LINUX/ssh.sh $LINUX/ai-dev.sh $SHARED/projects/projects.sh $SHARED/skills/skills.sh"
+LINUX_MODULES="$LINUX/ssh.sh $LINUX/apps.sh $LINUX/ai-dev.sh $SHARED/projects/projects.sh $SHARED/skills/skills.sh"
 
 show_help() {
     cat <<EOF

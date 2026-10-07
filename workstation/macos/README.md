@@ -32,7 +32,7 @@ macOS ships, so nothing has to be installed first.
 | Module | What it does |
 |--------|--------------|
 | `homebrew.sh` | Homebrew, with `brew shellenv` in `~/.zprofile` |
-| `apps.sh` | btop, just, OrbStack. Warp, Zed and RustDesk too, unless the Mac is headless. Apps already in /Applications count as installed |
+| `apps.sh` | btop, just, qrencode, OrbStack. Warp, Zed and RustDesk too, unless the Mac is headless. Apps already in /Applications count as installed |
 | `tailscale.sh` | The brew `tailscaled` as a system service, so it starts before anyone logs in; logs in with Tailscale SSH on. The machine stays untagged |
 | `full-disk-access.sh` | Checks that the terminal has Full Disk Access; if not, opens the System Settings list |
 | `ai-dev.sh` | Runs [the AI dev toolchain setup](../shared/ai-dev/macos/README.md) unattended |

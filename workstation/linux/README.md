@@ -19,8 +19,9 @@ run that first (see the root README's Linux Workstation workflow).
 
 1. **Questions:** git identity, GitHub key, your projects, the agent skills.
    Then one "Start the setup?".
-2. **Dependencies:** git and the ssh client, qrencode, then the whole AI dev
-   toolchain, because it brings the `jq` the projects and skills modules need.
+2. **Dependencies:** git and the ssh client, git-crypt, qrencode, stow, then
+   the whole AI dev toolchain, because it brings the `jq` the projects and
+   skills modules need.
 3. **No input needed:** git settings, project folders and `cdp` names, links
    for the agent skills whose repos are already there.
 4. **Needs you:** creating the GitHub key and adding it to your account. Your
@@ -32,7 +33,7 @@ run that first (see the root README's Linux Workstation workflow).
 | Module | What it does |
 |--------|--------------|
 | `ssh.sh` | Git identity, GitHub https URLs through SSH, and a GitHub key at `~/.ssh/id_ed25519`. The key has no passphrase: there is no Keychain to remember one. With no terminal, it prints the key and leaves the "add it to GitHub" step for the summary |
-| `apps.sh` | qrencode |
+| `apps.sh` | git-crypt, qrencode, stow |
 | `ai-dev.sh` | Runs [the AI dev toolchain setup](../shared/ai-dev/README.md) unattended. `--upgrade` and `--force` given to `workstation/setup.sh` are passed on to it |
 | [`projects.sh`](../shared/projects/README.md) | Optional, one question. Clones the repos in your projects list and registers each name with `cdp` |
 | [`skills.sh`](../shared/skills/README.md) | Optional, one question. Links each agent skill into `~/.claude/skills` from your projects checkout, or from a clone in `~/.gylab/<repo>`; the library catalog is cloned straight to `~/.claude/skills/library` |

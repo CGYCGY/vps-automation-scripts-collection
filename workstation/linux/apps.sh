@@ -4,7 +4,7 @@
 set -e
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/linux-lib.sh"
 
-PACKAGES="qrencode"
+PACKAGES="git-crypt qrencode stow"
 
 module_status() {
     local p

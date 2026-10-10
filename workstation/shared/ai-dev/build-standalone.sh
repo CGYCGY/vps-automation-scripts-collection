@@ -40,6 +40,7 @@ LINUX_PAYLOAD=(
 MACOS_PAYLOAD=(
     $AI/macos/ai-dev-setup-macos.sh
     $AI/macos/project-navigator.zsh
+    $AI/macos/upd.sh
     shared/lib/project-navigator-lib.sh
     $AI/agent-instructions/CLAUDE.md
     $AI/agent-instructions/AGENTS.md

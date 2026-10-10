@@ -51,7 +51,9 @@ asks for your password once so Homebrew can install.
 | `agent-instructions` | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md` from `../agent-instructions` to `~/.claude`, `~/.codex`, `~/.gemini` |
 | `claude-statusline` | `../claude/statusline-command.sh` to `~/.claude`, plus a `statusLine` entry in `settings.json` when it has none; `jq` is installed with brew when missing |
 | `agent-settings` | Merges `../agent-settings/` into `~/.claude/settings.json`, `~/.pi/agent/settings.json` (jq) and `~/.codex/config.toml`; the tracked keys win, other keys stay, model and effort are not set |
-| `aliases` | `cc`, `aa`, `pa`, `upd`, `dc`, `jj`, added to `~/.zshrc` |
+| `aliases` | `cc`, `aa`, `pa`, `dc`, `jj`, added to `~/.zshrc` |
+| `upd` | `upd.sh` to `~/.local/bin/upd`, the command that updates every agent CLI above |
+| `upd-schedule` | A LaunchAgent (`~/Library/LaunchAgents/local.ai-dev.upd.plist`) that runs `upd` daily at 09:00, logging to `~/Library/Logs/upd.log` |
 | `project-navigator` | The zsh `cdp` from [CGYCGY/shell-utils](https://github.com/CGYCGY/shell-utils), installed to `~/.zsh/project-navigator.zsh` |
 
 Every vendor installer is downloaded to a file before it runs. macOS `curl`
@@ -73,6 +75,8 @@ the `node` step guarantees.
 
 - Homebrew replaces `apt`, and `--upgrade` runs `brew update && brew upgrade`.
 - Everything goes in `~/.zshrc`; there is no `~/.bash_aliases`.
+- `upd` is a command in `~/.local/bin` with a daily LaunchAgent, not an alias;
+  on Linux it is still an alias with no schedule.
 - `agy install` is not run. The installer already puts `agy` in `~/.local/bin`,
   and `agy install` would add a duplicate PATH line to `~/.zprofile`.
 - `agent-browser install` runs without `--with-deps`, since macOS needs no extra

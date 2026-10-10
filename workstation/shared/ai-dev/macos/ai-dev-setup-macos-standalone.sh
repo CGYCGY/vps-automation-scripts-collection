@@ -25,8 +25,8 @@ cat > "$AI_DEV_TMP/workstation/shared/ai-dev/macos/ai-dev-setup-macos.sh" <<'AI_
 # the record is deleted once everything succeeds.
 #
 # This script only ever INSTALLS what is missing; it never updates what is
-# already there. Updating is `upd`'s job. After a successful run it offers to
-# set up the agent skills (workstation/shared/skills/skills.sh).
+# already there. Updating is `upd`'s job, which a LaunchAgent runs daily at
+# 09:00. After a successful run it offers to set up the agent skills (workstation/shared/skills/skills.sh).
 #
 #   ./ai-dev-setup-macos.sh                     survey, show the plan, ask, then install
 #   ./ai-dev-setup-macos.sh -y                  same, without the confirmation prompt
@@ -59,7 +59,6 @@ ALIAS_DEFS=(
     'cc|alias cc="claude --dangerously-skip-permissions"'
     'aa|alias aa="agy --dangerously-skip-permissions"'
     'pa|alias pa="prime-agent"'
-    'upd|alias upd="claude update && codex update && pi update && prime-agent update && herdr update && agy update && agent-browser upgrade"'
     'dc|alias dc="docker compose"'
     'jj|alias jj="just"'
 )
@@ -96,7 +95,16 @@ CODEX_CONFIG="$HOME/.codex/config.toml"
 PI_DEFAULTS="${SCRIPT_DIR}/../agent-settings/pi-settings.json"
 PI_SETTINGS="${PI_CODING_AGENT_DIR:-$HOME/.pi/agent}/settings.json"
 
-# Both of the above, and the project navigator, read files that sit beside this
+# The updater, installed as a command (not an alias) so the LaunchAgent can run
+# it: launchd reads no ~/.zshrc. Hardcoded to 09:00 daily; launchd runs a missed
+# slot on wake.
+UPD_SRC="${SCRIPT_DIR}/upd.sh"
+UPD_FILE="$HOME/.local/bin/upd"
+UPD_LABEL="local.ai-dev.upd"
+UPD_PLIST="$HOME/Library/LaunchAgents/${UPD_LABEL}.plist"
+UPD_LOG="$HOME/Library/Logs/upd.log"
+
+# All of the above, and the project navigator, read files that sit beside this
 # script in a checkout or in the standalone bundle. A lone copy of this script
 # has none of them, and the survey says so rather than reporting the step as done.
 NO_SOURCES="source files missing — run ai-dev-setup-macos-standalone.sh or a checkout"
@@ -110,7 +118,7 @@ LOG_FILE="${STATE_DIR}/setup.log"
 MARKER_BEGIN="# >>> new-device-setup >>>"
 MARKER_END="# <<< new-device-setup <<<"
 
-STEPS=(homebrew nvm node bun shell-path claude codex pi prime-agent herdr agy npm-allow-scripts agent-browser agent-instructions claude-statusline agent-settings aliases project-navigator)
+STEPS=(homebrew nvm node bun shell-path claude codex pi prime-agent herdr agy npm-allow-scripts agent-browser agent-instructions claude-statusline agent-settings aliases upd upd-schedule project-navigator)
 
 OPT_YES=0; OPT_UPGRADE=0; OPT_FORCE=0; OPT_STATUS=0; OPT_SKILLS=1
 
@@ -322,6 +330,51 @@ detect_agent_instructions() {
         return 0
     fi
     DETAIL="will install/update: ${pending% }"
+    return 1
+}
+
+detect_upd() {
+    if [ ! -f "$UPD_SRC" ]; then
+        DETAIL="$NO_SOURCES"
+        return 2
+    fi
+    if cmp -s "$UPD_SRC" "$UPD_FILE" 2>/dev/null; then
+        DETAIL="~/.local/bin/upd matches"
+        return 0
+    fi
+    DETAIL="will install/update ~/.local/bin/upd"
+    return 1
+}
+
+upd_plist() {
+    cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>${UPD_LABEL}</string>
+  <key>ProgramArguments</key>
+  <array><string>${UPD_FILE}</string></array>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+  <key>StandardOutPath</key><string>${UPD_LOG}</string>
+  <key>StandardErrorPath</key><string>${UPD_LOG}</string>
+</dict>
+</plist>
+EOF
+}
+
+detect_upd_schedule() {
+    if [ ! -f "$UPD_SRC" ]; then
+        DETAIL="$NO_SOURCES"
+        return 2
+    fi
+    if upd_plist | cmp -s - "$UPD_PLIST" 2>/dev/null \
+       && launchctl print "gui/$(id -u)/${UPD_LABEL}" >/dev/null 2>&1; then
+        DETAIL="daily 09:00, loaded"
+        return 0
+    fi
+    DETAIL="will install and load the 09:00 LaunchAgent"
     return 1
 }
 
@@ -674,6 +727,22 @@ install_agent_settings() {
 # Populate the registry with `cdp add <name>` or the projects module.
 install_project_navigator() { pn_install; }
 
+install_upd() {
+    mkdir -p "$(dirname "$UPD_FILE")"
+    install -m 0755 "$UPD_SRC" "$UPD_FILE"
+    log_ok "installed upd.sh -> $UPD_FILE"
+}
+
+# bootstrap refuses a label that is already loaded, so unload any old copy first.
+install_upd_schedule() {
+    local domain="gui/$(id -u)"
+    mkdir -p "$(dirname "$UPD_PLIST")" "$(dirname "$UPD_LOG")"
+    upd_plist > "$UPD_PLIST"
+    launchctl bootout "${domain}/${UPD_LABEL}" 2>/dev/null || true
+    launchctl bootstrap "$domain" "$UPD_PLIST"
+    log_ok "upd scheduled daily at 09:00 ($UPD_PLIST), log at $UPD_LOG"
+}
+
 install_aliases() {
     backup_once "$ZSHRC"
     local entry
@@ -794,7 +863,8 @@ ${C_BOLD}Still to do by hand — each tool authenticates separately:${C_RESET}
 
 ${C_BOLD}Then:${C_RESET}
   exec zsh -l     reload the shell
-  upd             confirm every tool updates
+  upd             confirm every tool updates (also runs daily at 09:00,
+                  log at ~/Library/Logs/upd.log)
   cdp add <name>  register this Mac's projects (the registry starts empty)
 
 ${C_BOLD}Optional extras (not covered by upd):${C_RESET}
@@ -1023,6 +1093,33 @@ _cdp() {
 }
 
 compdef _cdp cdp
+AI_DEV_PAYLOAD_EOF
+
+cat > "$AI_DEV_TMP/workstation/shared/ai-dev/macos/upd.sh" <<'AI_DEV_PAYLOAD_EOF'
+#!/bin/bash
+# Updates every agent CLI that ai-dev-setup-macos.sh installs. The setup copies it
+# to ~/.local/bin/upd, and a LaunchAgent runs it daily at 09:00.
+#
+# launchd starts it with a bare PATH and without ~/.zshrc, so it builds its own
+# PATH and loads nvm's default Node rather than a fixed version directory, which a
+# Node upgrade would leave behind.
+
+export PATH="$HOME/.local/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export NVM_DIR="$HOME/.nvm"
+# shellcheck source=/dev/null
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" --no-use && nvm use default --silent
+
+echo "=== upd $(date '+%Y-%m-%d %H:%M:%S') ==="
+fail=0
+# Each one runs regardless of the others: a single failing updater must not
+# leave the rest stale.
+for cmd in "claude update" "codex update" "pi update" "prime-agent update" \
+           "herdr update" "agy update" "agent-browser upgrade"; do
+    echo "--- $cmd"
+    # shellcheck disable=SC2086
+    $cmd || { echo "!!! FAILED: $cmd"; fail=1; }
+done
+exit "$fail"
 AI_DEV_PAYLOAD_EOF
 
 cat > "$AI_DEV_TMP/shared/lib/project-navigator-lib.sh" <<'AI_DEV_PAYLOAD_EOF'

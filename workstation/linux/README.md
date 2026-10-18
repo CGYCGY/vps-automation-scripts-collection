@@ -19,7 +19,8 @@ run that first (see the root README's Linux Workstation workflow).
 
 1. **Questions:** git identity, GitHub key, your projects, the agent skills.
    Then one "Start the setup?".
-2. **Dependencies:** git and the ssh client, git-crypt, qrencode, stow, then
+2. **Dependencies:** git and the ssh client, git-crypt, qrencode, stow,
+   lefthook (from its own apt repo), gitleaks (latest GitHub release), then
    the whole AI dev toolchain, because it brings the `jq` the projects and
    skills modules need.
 3. **No input needed:** git settings, project folders and `cdp` names, links

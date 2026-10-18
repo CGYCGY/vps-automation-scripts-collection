@@ -11,17 +11,34 @@ LEFTHOOK_REPO=https://dl.cloudsmith.io/public/evilmartians/lefthook
 LEFTHOOK_KEYRING=/usr/share/keyrings/evilmartians-lefthook-archive-keyring.gpg
 LEFTHOOK_LIST=/etc/apt/sources.list.d/evilmartians-lefthook.list
 
-# Not from apt: Ubuntu's gitleaks is 8.16, too old for the top-level
-# [[allowlists]] that repos' .gitleaks.toml use. Installed once, then left alone.
+# Not from apt: Ubuntu's gitleaks is 8.16. Below 8.25 the top-level
+# [[allowlists]] that repos' .gitleaks.toml use are silently ignored, so known
+# fakes block commits. At or above it, an install is left alone.
 GITLEAKS_RELEASES=https://github.com/gitleaks/gitleaks/releases
+GITLEAKS_MIN=8.25.0
+
+# Empty when unparseable: Ubuntu's build prints "version is set by build process".
+gitleaks_version() { gitleaks version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1; }
+
+# version_ge A B: A >= B
+version_ge() { [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$2" ]; }
+
+gitleaks_ok() {
+    local v
+    have gitleaks || return 1
+    v="$(gitleaks_version)"
+    [ -n "$v" ] && version_ge "$v" "$GITLEAKS_MIN"
+}
 
 module_status() {
-    local p
+    local p v
     for p in $PACKAGES; do
         if pkg_installed "$p"; then status_row "$p" present ""
         else status_row "$p" missing ""; fi
     done
-    if have gitleaks; then status_row gitleaks present "$(gitleaks version 2>/dev/null)"
+    v="$(gitleaks_version)"
+    if gitleaks_ok; then status_row gitleaks present "$v"
+    elif have gitleaks; then status_row gitleaks outdated "${v:-unknown version}, needs $GITLEAKS_MIN+"
     else status_row gitleaks missing "latest GitHub release"; fi
 }
 
@@ -47,9 +64,13 @@ add_lefthook_repo() {
 }
 
 install_gitleaks() {
-    if have gitleaks; then
-        log_ok "gitleaks $(gitleaks version 2>/dev/null)"
+    if gitleaks_ok; then
+        log_ok "gitleaks $(gitleaks_version)"
         return 0
+    fi
+    if pkg_installed gitleaks; then
+        log_info "Removing apt's gitleaks; it is older than $GITLEAKS_MIN"
+        sudo DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq gitleaks
     fi
     local arch tag version tarball tmp
     case "$(uname -m)" in
@@ -72,7 +93,12 @@ install_gitleaks() {
     tar -xzf "$tmp/$tarball" -C "$tmp" gitleaks
     sudo install -m 755 "$tmp/gitleaks" /usr/local/bin/gitleaks
     rm -rf "$tmp"
-    log_ok "gitleaks $version installed"
+    hash -r
+    if gitleaks_ok; then
+        log_ok "gitleaks $version installed"
+    else
+        log_warn "gitleaks $version is in /usr/local/bin, but an older $(command -v gitleaks) comes first on PATH; remove it"
+    fi
 }
 
 module_deps() {

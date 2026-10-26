@@ -98,14 +98,26 @@ journalctl -u tailscaled --since "10 min ago" | grep -E "ssh-conn|ssh-session"
 - `tailnet policy does not permit you to SSH to this node` means no rule matches.
   Check the source machine's tags and the rule's users.
 
+## SSH Forwarding
+
+The policy decides who gets a shell, not what the session may forward. Tailscale
+SSH runs inside `tailscaled` as root, and so do its `ssh -L`, `ssh -R`, unix
+socket and agent forwards, so the setup scripts turn forwarding off on every
+machine with `TS_SSH_DISABLE_FORWARDING=1` in the daemon's environment:
+`/etc/default/tailscaled` on Linux, `/etc/tailscale/tailscaled-env.txt` on a
+Mac. Reach a port over the tailnet directly instead of tunnelling it through
+SSH.
+
 ## macOS
 
 Only the open-source `tailscaled`, installed with `brew install tailscale`, can
 accept Tailscale SSH on a Mac. The App Store and standalone apps can't. Run it
-as a system service, so it starts before anyone logs in:
+as a system service, so it starts before anyone logs in, with forwarding off:
 
 ```bash
 brew install tailscale
+sudo mkdir -p /etc/tailscale
+echo TS_SSH_DISABLE_FORWARDING=1 | sudo tee -a /etc/tailscale/tailscaled-env.txt
 sudo brew services start tailscale
 sudo tailscale up --ssh
 ```

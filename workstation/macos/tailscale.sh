@@ -6,8 +6,27 @@ set -e
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/macos-lib.sh"
 
 POLICY_GUIDE="docs/tailscale-tailnet.md"
+# tailscaled reads this file itself at startup (envknob.ApplyDiskConfig), so
+# it survives brew regenerating the launchd plist on every restart and upgrade.
+TS_ENV_FILE="/etc/tailscale/tailscaled-env.txt"
+# Tailscale SSH forwards ports, unix sockets and the agent as root inside
+# tailscaled. This knob (in every release since 1.60) refuses all of it.
+FWD_OFF="TS_SSH_DISABLE_FORWARDING=1"
 
 ssh_on() { tailscale debug prefs 2>/dev/null | grep -q '"RunSSH": true'; }
+fwd_off() { grep -qx "$FWD_OFF" "$TS_ENV_FILE" 2>/dev/null; }
+
+tailscaled_pid() { pgrep -x tailscaled 2>/dev/null | head -1; }
+# No /proc on macOS to read the daemon's environment, so: the line is on disk
+# and the daemon started after the file last changed. Equal seconds count as
+# after: the module writes the file, then starts the service.
+fwd_off_live() {
+    local pid started
+    pid="$(tailscaled_pid)"
+    [ -n "$pid" ] && fwd_off || return 1
+    started="$(date -j -f '%a %b %e %T %Y' "$(ps -o lstart= -p "$pid")" +%s 2>/dev/null)"
+    [ -n "$started" ] && [ "$started" -ge "$(stat -f %m "$TS_ENV_FILE")" ]
+}
 
 module_status() {
     if ! brew list --formula tailscale >/dev/null 2>&1; then
@@ -19,6 +38,9 @@ module_status() {
     else
         status_row tailscale present "logged in, Tailscale SSH on"
     fi
+    if ! fwd_off; then status_row ts-forwarding missing "will turn SSH forwarding off"
+    elif [ -z "$(tailscaled_pid)" ] || fwd_off_live; then status_row ts-forwarding present "off ($TS_ENV_FILE)"
+    else status_row ts-forwarding partial "off in $TS_ENV_FILE; applies when tailscaled restarts"; fi
 }
 
 module_plan() {
@@ -38,12 +60,31 @@ module_deps() {
 }
 
 module_auto() {
-    # A system service (sudo), so it starts at boot before anyone logs in.
-    if sudo brew services list 2>/dev/null | grep -qE '^tailscale +started'; then
-        log_ok "tailscaled running as a system service"
+    # Before the daemon starts, so a fresh Mac never needs the restart.
+    if fwd_off; then
+        log_ok "Tailscale SSH forwarding off"
     else
+        sudo mkdir -p "$(dirname "$TS_ENV_FILE")"
+        # Rewritten whole, via grep: appending to a file with no final newline
+        # would glue the key onto the last line.
+        { sudo grep -v '^TS_SSH_DISABLE_FORWARDING=' "$TS_ENV_FILE" 2>/dev/null || true
+          echo "$FWD_OFF"; } | sudo tee "$TS_ENV_FILE.tmp" >/dev/null
+        sudo mv "$TS_ENV_FILE.tmp" "$TS_ENV_FILE"
+        log_ok "Tailscale SSH forwarding off ($TS_ENV_FILE)"
+    fi
+
+    # A system service (sudo), so it starts at boot before anyone logs in.
+    if ! sudo brew services list 2>/dev/null | grep -qE '^tailscale +started'; then
         sudo brew services start tailscale >/dev/null
         log_ok "tailscaled started as a system service"
+    elif fwd_off_live; then
+        log_ok "tailscaled running as a system service"
+    elif over_tailscale_ssh; then
+        log_warn "tailscaled still allows forwarding until it restarts; that would cut this session"
+        note "- Restart tailscaled to apply forwarding off: sudo brew services restart tailscale (drops Tailscale SSH sessions)"
+    else
+        sudo brew services restart tailscale >/dev/null
+        log_ok "tailscaled restarted"
     fi
 }
 

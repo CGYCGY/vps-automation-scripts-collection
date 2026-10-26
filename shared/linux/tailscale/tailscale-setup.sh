@@ -12,6 +12,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TAILNET_V4="100.64.0.0/10"
 SSHD_DROPIN="/etc/ssh/sshd_config.d/00-tailscale-ssh.conf"
 POLICY_GUIDE="docs/tailscale-tailnet.md"
+# systemd hands this file to tailscaled (EnvironmentFile= in its unit).
+TS_DEFAULTS="/etc/default/tailscaled"
+# Tailscale SSH forwards ports, unix sockets and the agent as root inside
+# tailscaled. This knob (in every release since 1.60) refuses all of it.
+FWD_OFF="TS_SSH_DISABLE_FORWARDING=1"
 
 module_help() {
     cat <<EOF
@@ -43,6 +48,14 @@ role_tags() {
     esac
 }
 ts_ssh_on() { tailscale debug prefs 2>/dev/null | grep -q '"RunSSH": true'; }
+fwd_off_on_disk() { grep -qx "$FWD_OFF" "$TS_DEFAULTS" 2>/dev/null; }
+# What the running daemon actually got. Needs root: /proc/PID/environ is 0400.
+fwd_off_live() {
+    local pid
+    pid="$(systemctl show -p MainPID --value tailscaled 2>/dev/null)"
+    [ -n "$pid" ] && [ "$pid" != 0 ] &&
+        tr '\0' '\n' 2>/dev/null < "/proc/$pid/environ" | grep -qx "$FWD_OFF"
+}
 
 ts_tags() {
     tailscale status --json 2>/dev/null | jq -r '(.Self.Tags // []) | sort | join(",")' 2>/dev/null
@@ -133,6 +146,7 @@ module_status() {
         status_row tailscaled missing "comes with the install"
         status_row ts-login missing "will log in (browser link, or TS_AUTHKEY)"
         status_row ts-ssh missing "turned on at login"
+        status_row ts-forwarding missing "turned off at install"
     else
         status_row tailscale present "$(tailscale version 2>/dev/null | head -1)"
         if service_up tailscaled; then status_row tailscaled present "enabled and running"
@@ -159,6 +173,11 @@ module_status() {
         if ts_ssh_on; then status_row ts-ssh present "Tailscale SSH on"
         elif ! tailscale debug prefs >/dev/null 2>&1; then status_row ts-ssh unknown "can't read Tailscale's prefs; try with sudo"
         else status_row ts-ssh missing "turned on at login"; fi
+
+        if ! fwd_off_on_disk; then status_row ts-forwarding missing "will turn SSH forwarding off"
+        elif ! is_root; then status_row ts-forwarding unknown "off in $TS_DEFAULTS; needs sudo to check the running daemon"
+        elif fwd_off_live; then status_row ts-forwarding present "off"
+        else status_row ts-forwarding partial "off in $TS_DEFAULTS; applies when tailscaled restarts"; fi
     fi
 
     if ! pkg_installed ufw; then
@@ -245,10 +264,30 @@ module_deps() {
         rm -f "$installer"
         log_ok "Tailscale installed"
     fi
+
+    # Before the service starts, so a fresh install picks it up without a restart.
+    if fwd_off_on_disk; then
+        log_ok "Tailscale SSH forwarding already off"
+    else
+        sed -i '/^TS_SSH_DISABLE_FORWARDING=/d' "$TS_DEFAULTS" 2>/dev/null || true
+        printf '\n# Tailscale SSH: no port, socket or agent forwarding; they would run as root inside tailscaled.\n%s\n' "$FWD_OFF" >> "$TS_DEFAULTS"
+        log_ok "Tailscale SSH forwarding off ($TS_DEFAULTS)"
+    fi
+
     if service_up tailscaled; then
         log_ok "tailscaled already enabled and running"
     else
         systemctl enable --now tailscaled >/dev/null 2>&1 || true
+    fi
+    if fwd_off_live; then
+        :
+    elif over_tailscale_ssh; then
+        log_warn "tailscaled still allows forwarding until it restarts; that would cut this session"
+        note "- Restart tailscaled to apply forwarding off: sudo systemctl restart tailscaled (drops Tailscale SSH sessions)"
+    elif systemctl restart tailscaled 2>/dev/null; then
+        log_ok "tailscaled restarted"
+    else
+        log_warn "tailscaled didn't restart; forwarding stays on until it does"
     fi
 }
 

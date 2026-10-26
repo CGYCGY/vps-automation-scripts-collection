@@ -22,7 +22,7 @@ anything; the firewall and sshd checks need sudo.
 | Phase | Steps |
 |-------|-------|
 | plan | Asks the machine's role, which ports to open, and whether to set a console password |
-| deps | Installs curl, ufw, jq and Tailscale |
+| deps | Installs curl, ufw, jq and Tailscale; turns Tailscale SSH forwarding off |
 | auto | Writes the UFW rules, without turning UFW on yet |
 | interactive | Logs in with Tailscale SSH and the role's tags, sets the console password, asks you to confirm `ssh user@host` works over the tailnet, then turns UFW on and SSH password login off |
 
@@ -50,6 +50,18 @@ The script writes `/etc/ssh/sshd_config.d/00-tailscale-ssh.conf`. Many cloud
 images ship `50-cloud-init.conf` with `PasswordAuthentication yes`. sshd uses
 the first value it reads, so a file sorting before it is the one that works;
 editing `sshd_config` itself has no effect.
+
+### SSH Forwarding
+
+Tailscale SSH runs inside `tailscaled`, as root, and so does whatever it
+forwards: `ssh -L`, `ssh -R`, unix sockets and the agent. The script turns all
+of that off with `TS_SSH_DISABLE_FORWARDING=1` in `/etc/default/tailscaled`,
+the file systemd hands to `tailscaled`. A `tailscaled` that was already running
+is restarted, unless the script is itself running over Tailscale SSH, since the
+restart would cut it off; the summary then tells you to restart. If a package
+upgrade asks about the modified `/etc/default/tailscaled`, keep the local
+version. To allow forwarding again, delete the line and run
+`sudo systemctl restart tailscaled`.
 
 ## Unattended Runs
 

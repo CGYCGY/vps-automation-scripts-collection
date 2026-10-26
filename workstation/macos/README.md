@@ -33,7 +33,7 @@ macOS ships, so nothing has to be installed first.
 |--------|--------------|
 | `homebrew.sh` | Homebrew, with `brew shellenv` in `~/.zprofile` |
 | `apps.sh` | btop, git-crypt, gitleaks, just, lefthook, qrencode, stow, OrbStack. Warp, Zed and RustDesk too, unless the Mac is headless. Apps already in /Applications count as installed |
-| `tailscale.sh` | The brew `tailscaled` as a system service, so it starts before anyone logs in; logs in with Tailscale SSH on. The machine stays untagged |
+| `tailscale.sh` | The brew `tailscaled` as a system service, so it starts before anyone logs in; logs in with Tailscale SSH on and its port, socket and agent forwarding off. The machine stays untagged |
 | `full-disk-access.sh` | Checks that the terminal has Full Disk Access; if not, opens the System Settings list |
 | `ai-dev.sh` | Runs [the AI dev toolchain setup](../shared/ai-dev/macos/README.md) unattended |
 | `power.sh` | On power: no sleep, and restart after a power cut. Defaults to no on a laptop |
@@ -57,6 +57,19 @@ turned off, but only when it's safe to:
   script without it.
 
 If either is missing, the summary says so and a re-run finishes it.
+
+### SSH Forwarding
+
+Tailscale SSH runs inside `tailscaled`, as root, and so does whatever it
+forwards: `ssh -L`, `ssh -R`, unix sockets and the agent. The module turns all
+of that off with `TS_SSH_DISABLE_FORWARDING=1` in
+`/etc/tailscale/tailscaled-env.txt`. `tailscaled` reads that file itself at
+startup, so the setting survives `brew services restart` and upgrades, both of
+which rewrite the launchd plist (an `EnvironmentVariables` entry there would
+not). A `tailscaled` that was already running is restarted, unless the setup
+is itself running over Tailscale SSH, since the restart would cut it off; the
+summary then tells you to restart. To allow forwarding again, delete the line
+and run `sudo brew services restart tailscale`.
 
 ## Full Disk Access
 

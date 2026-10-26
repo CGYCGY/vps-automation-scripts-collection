@@ -222,6 +222,26 @@ ts_state() {
         sed -n 's/.*"BackendState": *"\([A-Za-z]*\)".*/\1/p' | head -1
 }
 
+# A Tailscale SSH session is a child of tailscaled, so restarting the daemon
+# kills it, setup included. Walks the parent chain; sudo strips SSH_CONNECTION,
+# and plain sshd over the tailnet rides out the restart anyway.
+over_tailscale_ssh() {
+    local pid=$$ comm stat
+    while [ "${pid:-0}" -gt 1 ]; do
+        if [ -r "/proc/$pid/stat" ]; then
+            # Minimal Debian images lack ps. Field 2 is "(comm)", field 4 the ppid.
+            stat="$(cat "/proc/$pid/stat")"
+            comm="${stat#*\(}"; comm="${comm%\)*}"
+            pid="$(echo "${stat##*\)}" | awk '{print $2}')"
+        else
+            comm="$(ps -o comm= -p "$pid" 2>/dev/null)"
+            pid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
+        fi
+        case "$comm" in *tailscaled) return 0 ;; esac
+    done
+    return 1
+}
+
 # --- notes for the summary -----------------------------------------------------
 
 # note "text": collected in any phase, printed by the menu's summary at the end.

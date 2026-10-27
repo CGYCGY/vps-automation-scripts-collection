@@ -11,10 +11,11 @@ SHARED_DIR="$(cd "$SCRIPT_DIR/../shared" && pwd)"
 SWAP="$SHARED_DIR/linux/swap/swap-setup.sh"
 TAILSCALE="$SHARED_DIR/linux/tailscale/tailscale-setup.sh"
 COOLIFY="$SCRIPT_DIR/coolify/coolify-setup.sh"
+AGENT_USER_SETUP="$SHARED_DIR/linux/agent-user/agent-user-setup.sh"
 
 show_help() {
     cat <<EOF
-Usage: sudo $0 [option] [-y]
+Usage: sudo $0 [option] [-y] [--user NAME]
 
 Setup (needs sudo):
   --full            Swap, Tailscale SSH and Coolify, in one run
@@ -22,6 +23,8 @@ Setup (needs sudo):
   --coolify         Coolify only (dashboard or managed server)
   --coolify-remote  Coolify as a managed server, without asking the role
   --swap            Swap only
+  --agent-user      Local user for an automation agent, passwordless sudo
+                    (not part of --full; --user NAME picks the name, default agent)
 
 Status (sudo optional; without it, some checks say they need it):
   --status          Survey swap, Tailscale and Coolify without changing anything
@@ -50,6 +53,7 @@ setup() {
         tailscale) run_modules "$TAILSCALE" ;;
         coolify)   run_modules "$COOLIFY" ;;
         swap)      run_modules "$SWAP" ;;
+        agent-user) run_modules "$AGENT_USER_SETUP" ;;
     esac
 }
 
@@ -62,10 +66,11 @@ run_choice() {
         --coolify|3)     setup coolify ;;
         --coolify-remote) MACHINE_ROLE=managed; export MACHINE_ROLE; setup coolify ;;
         --swap|4)        setup swap ;;
+        --agent-user|5)  setup agent-user ;;
         --status)        status_modules "$SWAP" "$TAILSCALE" "$COOLIFY" ;;
-        --minio|5)       tool minio/minio_migration.sh ;;
-        --minio-users|6) tool minio/minio_user_bucket_manager.sh ;;
-        --postgres|7)    tool postgres/postgres_manager.sh ;;
+        --minio|6)       tool minio/minio_migration.sh ;;
+        --minio-users|7) tool minio/minio_user_bucket_manager.sh ;;
+        --postgres|8)    tool postgres/postgres_manager.sh ;;
         *) return 2 ;;
     esac
 }
@@ -80,13 +85,14 @@ ${C_BOLD}Server Setup${C_RESET} - Linux VPS hosting Coolify
   2) Tailscale SSH and firewall
   3) Coolify (dashboard or managed server)
   4) Swap
-  5) MinIO migration tool
-  6) MinIO user & bucket manager
-  7) PostgreSQL manager
+  5) Agent user (passwordless sudo, for an automation agent)
+  6) MinIO migration tool
+  7) MinIO user & bucket manager
+  8) PostgreSQL manager
   q) Quit
 
 EOF
-        printf 'Select [1-7, q]: '
+        printf 'Select [1-8, q]: '
         read -r choice
         case "$choice" in
             q|Q) exit 0 ;;
@@ -97,12 +103,15 @@ EOF
 }
 
 choice=""
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         -y|--yes) ASSUME_YES=1; export ASSUME_YES ;;
         -h|--help) show_help; exit 0 ;;
-        *) [ -z "$choice" ] && choice="$arg" ;;
+        --user) [ -n "${2:-}" ] || die "--user needs a name"; AGENT_USER="$2"; export AGENT_USER; shift ;;
+        --user=*) AGENT_USER="${1#--user=}"; export AGENT_USER ;;
+        *) [ -z "$choice" ] && choice="$1" ;;
     esac
+    shift
 done
 
 if [ -z "$choice" ]; then

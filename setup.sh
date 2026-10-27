@@ -7,6 +7,7 @@
 # Usage:
 #   sudo ./setup.sh server [options]   Linux VPS hosting Coolify (root)
 #   ./setup.sh workstation [options]   machine used for work (normal user)
+#   sudo ./setup.sh agent-user [opts]  Linux: local user for an automation agent
 #   ./setup.sh                         ask which one
 #
 # Must stay bash 3.2 compatible: it is the first thing run on a fresh Mac.
@@ -34,9 +35,10 @@ fi
 case "$type" in
     server)      exec bash "$SCRIPT_DIR/server/setup.sh" "$@" ;;
     workstation) exec bash "$SCRIPT_DIR/workstation/setup.sh" "$@" ;;
-    -h|--help)   sed -n '7,10p' "$0" | sed 's/^# \{0,1\}//' ;;
+    agent-user)  exec bash "$SCRIPT_DIR/shared/linux/agent-user/agent-user-setup.sh" "$@" ;;
+    -h|--help)   sed -n '7,11p' "$0" | sed 's/^# \{0,1\}//' ;;
     *)
-        echo "Unknown type: $type (use server or workstation)" >&2
+        echo "Unknown type: $type (use server, workstation or agent-user)" >&2
         exit 1
         ;;
 esac

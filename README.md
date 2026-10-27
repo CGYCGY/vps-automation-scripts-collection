@@ -16,6 +16,7 @@ cd vps-automation-scripts-collection
 
 sudo ./setup.sh server       # Linux VPS hosting Coolify
 ./setup.sh workstation       # machine used for work (no sudo)
+sudo ./setup.sh agent-user   # Linux: an "agent" user for an automation agent
 ./setup.sh                   # ask which one
 ```
 
@@ -30,6 +31,7 @@ sudo ./server/setup.sh --tailscale       # Tailscale SSH and firewall only
 sudo ./server/setup.sh --coolify         # Coolify only (asks: dashboard or managed server)
 sudo ./server/setup.sh --coolify-remote  # Coolify as a managed server
 sudo ./server/setup.sh --swap            # Swap only
+sudo ./server/setup.sh --agent-user      # "agent" user with passwordless sudo (--user NAME for another name)
 ./server/setup.sh --status               # Survey swap, Tailscale and Coolify without changing anything
 ./server/setup.sh --minio                # MinIO migration tool
 ./server/setup.sh --minio-users          # MinIO user & bucket manager
@@ -43,6 +45,22 @@ as the Tailscale login. `-y` takes the default answer for every question.
 Every step checks the machine first and skips what is already done, so a run
 that stopped halfway is finished by running it again. `--status` shows the same
 checks; run it with sudo for the firewall, sshd and Docker ones.
+
+### Agent User Options
+
+```bash
+sudo ./setup.sh agent-user              # Create "agent": password locked, passwordless sudo
+sudo ./setup.sh agent-user --user bot   # Another name
+sudo ./setup.sh agent-user -y           # Take the default for every question
+./setup.sh agent-user --status          # Survey without changing anything; sudo for every check
+```
+
+A local account for an automation agent that logs in over Tailscale SSH, on a
+server or a Linux workstation (Debian, Ubuntu, Mint, WSL); on a Mac it reports
+"not supported". It is a separate run, so the workstation setup stays sudo-free
+and server `--full` doesn't add it. Sudo comes from one file,
+`/etc/sudoers.d/agent`, to narrow to an allowlist later. See the
+[agent user setup](shared/linux/agent-user/README.md).
 
 ### Workstation Options
 
@@ -68,6 +86,7 @@ the end. On Linux, `--upgrade` and `--force` are passed on to the
 | Server | **PostgreSQL Manager** | Manage databases, users, and permissions | [server/postgres/README.md](server/postgres/README.md) |
 | Shared (Linux) | **Tailscale SSH** | Secure the machine with Tailscale SSH - no more SSH keys | [shared/linux/tailscale/README.md](shared/linux/tailscale/README.md) |
 | Shared (Linux) | **Swap Config** | RAM-based optimized swap settings | [shared/linux/swap/README.md](shared/linux/swap/README.md) |
+| Shared (Linux) | **Agent User** | Local `agent` user with passwordless sudo, for an automation agent over Tailscale SSH | [shared/linux/agent-user/README.md](shared/linux/agent-user/README.md) |
 | Workstation | **Linux Setup** | Git and GitHub key, the AI dev toolchain, your projects and the agent skills | [workstation/linux/README.md](workstation/linux/README.md) |
 | Workstation | **Mac Setup** | Homebrew apps, Tailscale SSH, power, Finder, Zed settings, git and GitHub key, plus the AI dev toolchain | [workstation/macos/README.md](workstation/macos/README.md) |
 | Workstation | **Projects** | Clone your repos into the same folder layout on every machine and register each with `cdp`; optional, from a JSONC list | [workstation/shared/projects/README.md](workstation/shared/projects/README.md) |
@@ -115,7 +134,8 @@ sudo MACHINE_ROLE=workstation ./shared/linux/tailscale/tailscale-setup.sh
 Secures remote access with Tailscale (as root), then, as the normal user, asks
 every question and sets up git and a GitHub key, the AI development toolchain,
 your projects and the agent skills. It asks for sudo only to install missing apt
-packages.
+packages. For an automation agent, add its user separately with
+`sudo ./setup.sh agent-user`.
 
 ### Mac Workstation
 ```bash
@@ -176,6 +196,9 @@ that need you: the Tailscale login and the GitHub key.
     │   ├── setup-lib.sh        # Phase runner every setup script uses
     │   └── project-navigator-lib.sh # cdp install shared by ai-dev and projects
     └── linux/                  # Used by both servers and Linux workstations
+        ├── agent-user/
+        │   ├── agent-user-setup.sh     # Local user for an automation agent, passwordless sudo
+        │   └── README.md
         ├── swap/
         │   ├── swap-setup.sh           # RAM-based swap file and tuning
         │   └── README.md
@@ -197,6 +220,7 @@ that need you: the Tailscale login and the GitHub key.
 ## Security Considerations
 
 - Server scripts require root/sudo; workstation setup must run as the normal user
+- The agent user has no password and passwordless sudo; narrow `/etc/sudoers.d/agent` to what the agent needs
 - Credentials stored with restricted permissions (mode 600)
 - Tailscale restricts SSH to private network
 - Scripts are idempotent (safe to run multiple times)

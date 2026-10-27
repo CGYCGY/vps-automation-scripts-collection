@@ -70,6 +70,11 @@ Notes on the rules:
   `dst` as tags.
 - **Coolify logs in as `coolify`, not root.** The Coolify setup on a managed
   server creates that user with passwordless sudo.
+- **The `agent` user needs no rule of its own.** `sudo ./setup.sh agent-user`
+  creates it for an automation agent, and `autogroup:nonroot` means every local
+  account except root, so the first two rules already let it in from your own
+  devices. An agent connecting from a tagged machine would need a rule with
+  that tag as `src`.
 - **Servers are never a source** except the dashboard's `tag:coolify` rule.
 
 ## Order Matters
